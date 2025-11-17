@@ -1,0 +1,150 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Profile {
+  id          String   @id @default(uuid())
+  displayName String   @map("display_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  tables      Table[]  @relation("HostTables")
+  seats       Seat[]
+  playerHands PlayerHand[]
+  actions     HandAction[]
+  messages    ChatMessage[]
+
+  @@index([displayName], name: "profiles_display_name_idx")
+  @@map("profiles")
+}
+
+model Table {
+  id          String   @id @default(uuid())
+  hostUserId  String   @map("host_user_id")
+  host        Profile  @relation("HostTables", fields: [hostUserId], references: [id], onDelete: Cascade)
+  name        String
+  inviteCode  String   @unique @map("invite_code")
+  maxPlayers  Int      @map("max_players")
+  smallBlind  Int      @map("small_blind")
+  bigBlind    Int      @map("big_blind")
+  status      String   // 'OPEN' | 'IN_GAME' | 'CLOSED'
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  seats       Seat[]
+  hands       Hand[]
+  playerHands PlayerHand[]
+  actions     HandAction[]
+  messages    ChatMessage[]
+
+  @@index([hostUserId], name: "tables_host_user_id_idx")
+  @@map("tables")
+}
+
+model Seat {
+  id           String   @id @default(uuid())
+  tableId      String   @map("table_id")
+  table        Table    @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  seatIndex    Int      @map("seat_index")
+  userId       String?  @map("user_id")
+  user         Profile? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  stack        Int      @default(0)
+  isSittingOut Boolean  @default(false) @map("is_sitting_out")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@unique([tableId, seatIndex])
+  @@index([tableId], name: "seats_table_id_idx")
+  @@index([userId], name: "seats_user_id_idx")
+  @@map("seats")
+}
+
+model Hand {
+  id                  String   @id @default(uuid())
+  tableId             String   @map("table_id")
+  table               Table    @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  handNumber          BigInt   @map("hand_number")
+  dealerSeatIndex     Int      @map("dealer_seat_index")
+  smallBlindSeatIndex Int      @map("small_blind_seat_index")
+  bigBlindSeatIndex   Int      @map("big_blind_seat_index")
+  communityCards      String[] @default([]) @map("community_cards")
+  status              String   // 'DEALING' | 'PREFLOP' | 'FLOP' | 'TURN' | 'RIVER' | 'SHOWDOWN' | 'COMPLETE'
+  createdAt           DateTime @default(now()) @map("created_at")
+  completedAt         DateTime? @map("completed_at")
+
+  playerHands         PlayerHand[]
+  actions             HandAction[]
+
+  @@unique([tableId, handNumber])
+  @@index([tableId], name: "hands_table_id_idx")
+  @@index([status], name: "hands_status_idx")
+  @@map("hands")
+}
+
+model PlayerHand {
+  id            String   @id @default(uuid())
+  handId        String   @map("hand_id")
+  hand          Hand     @relation(fields: [handId], references: [id], onDelete: Cascade)
+  tableId       String   @map("table_id")
+  table         Table    @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  userId        String   @map("user_id")
+  user          Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seatIndex     Int      @map("seat_index")
+  holeCards     String[] @default([]) @map("hole_cards")
+  netChips      Int      @map("net_chips")
+  vpipFlag      Boolean  @default(false) @map("vpip_flag")
+  pfrFlag       Boolean  @default(false) @map("pfr_flag")
+  sawShowdown   Boolean  @default(false) @map("saw_showdown")
+  wonShowdown   Boolean  @default(false) @map("won_showdown")
+  finalHandRank String? @map("final_hand_rank")
+
+  @@unique([handId, userId])
+  @@index([userId], name: "player_hands_user_id_idx")
+  @@index([tableId], name: "player_hands_table_id_idx")
+  @@index([handId], name: "player_hands_hand_id_idx")
+  @@map("player_hands")
+}
+
+model HandAction {
+  id         String   @id @default(uuid())
+  handId     String   @map("hand_id")
+  hand       Hand     @relation(fields: [handId], references: [id], onDelete: Cascade)
+  tableId    String   @map("table_id")
+  table      Table    @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  userId     String   @map("user_id")
+  user       Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seatIndex  Int      @map("seat_index")
+  street     String   // 'PREFLOP' | 'FLOP' | 'TURN' | 'RIVER'
+  actionType String   @map("action_type") // 'FOLD' | 'CHECK' | 'CALL' | 'BET' | 'RAISE' | 'ALL_IN'
+  amount     Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([handId], name: "hand_actions_hand_id_idx")
+  @@index([userId], name: "hand_actions_user_id_idx")
+  @@index([tableId], name: "hand_actions_table_id_idx")
+  @@map("hand_actions")
+}
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  tableId    String   @map("table_id")
+  table      Table    @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  userId     String   @map("user_id")
+  user       Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seatIndex  Int?     @map("seat_index")
+  content    String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([tableId, createdAt], name: "chat_messages_table_id_created_at_idx")
+  @@index([userId], name: "chat_messages_user_id_idx")
+  @@map("chat_messages")
+}
+

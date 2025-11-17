@@ -1,0 +1,651 @@
+````md
+# WebSocket Protocol Specification
+
+This document defines the **WebSocket protocol** used by the Texas Hold’em Home Game platform.
+
+- All **realtime gameplay** (betting, dealing, hand progression) happens over this protocol.
+- All **table chat** messages are also delivered over this protocol.
+- The backend is the **single source of truth**; the frontend is just a view + input device.
+
+For REST endpoints, see:  
+`/docs/specs/rest-api-spec.md`  
+For game engine types, see:  
+`/docs/specs/game-engine-spec.md`
+
+---
+
+## 1. Connection & Authentication
+
+### 1.1 URL
+
+Example WebSocket endpoint (Socket.IO or native WS):
+
+```txt
+wss://api.yourpokerapp.com/ws
+````
+
+or, with Socket.IO:
+
+```txt
+wss://api.yourpokerapp.com/socket.io/
+```
+
+### 1.2 Auth Token
+
+Clients must include a **Supabase JWT** when connecting:
+
+**Option A – Query / Auth payload (Socket.IO-style):**
+
+```ts
+const socket = io("wss://api.yourpokerapp.com", {
+  auth: {
+    token: supabaseAccessToken
+  }
+});
+```
+
+**Option B – URL query param (if needed):**
+
+```ts
+const token = encodeURIComponent(supabaseAccessToken);
+const ws = new WebSocket(`wss://api.yourpokerapp.com/ws?token=${token}`);
+```
+
+### 1.3 Authentication Failure
+
+If token is missing or invalid:
+
+* Server rejects/ disconnects the connection.
+* If using Socket.IO: emit an `ERROR` event with code `UNAUTHORIZED` before disconnecting.
+
+```json
+{
+  "type": "ERROR",
+  "code": "UNAUTHORIZED",
+  "message": "Invalid or missing auth token."
+}
+```
+
+---
+
+## 2. Message Envelope
+
+All messages (both directions) use a **JSON object** with at least a `type` field.
+
+```json
+{
+  "type": "STRING_IDENTIFIER",
+  "...": "other fields depending on type"
+}
+```
+
+* `type` is a string identifying the message.
+* Additional fields depend on the message type.
+
+### 2.1 Namespacing
+
+We logically group message types:
+
+* **Table & Gameplay:** `JOIN_TABLE`, `TABLE_STATE`, `PLAYER_ACTION`, etc.
+* **Chat:** `CHAT_SEND`, `CHAT_MESSAGE`
+* **System:** `ERROR`, `PONG`, etc.
+
+---
+
+## 3. Client → Server Messages
+
+All payloads below are **examples**; exact types should match your TS definitions on the frontend.
+
+### 3.1 Join / Leave Table
+
+#### 3.1.1 `JOIN_TABLE`
+
+Client requests to join a specific table’s realtime room.
+
+```json
+{
+  "type": "JOIN_TABLE",
+  "tableId": "table-uuid"
+}
+```
+
+**Server behavior:**
+
+* Validate `tableId`.
+* Verify that the authenticated user is allowed to join this table (host, invited, joined via REST, etc.).
+* Subscribe the WebSocket connection to the internal `table:<tableId>` room.
+* Respond with:
+
+  * `TABLE_JOINED` (success), or
+  * `ERROR` (failure).
+
+---
+
+#### 3.1.2 `LEAVE_TABLE` (optional but recommended)
+
+Client voluntarily leaves a table room.
+
+```json
+{
+  "type": "LEAVE_TABLE",
+  "tableId": "table-uuid"
+}
+```
+
+**Server behavior:**
+
+* Unsubscribe socket from the `table:<tableId>` room.
+* No change to game logic; seat/stack state is unchanged unless handled separately.
+
+---
+
+### 3.2 Seating & Ready State
+
+#### 3.2.1 `SIT_DOWN`
+
+Client requests to sit at a seat and buy in.
+
+```json
+{
+  "type": "SIT_DOWN",
+  "tableId": "table-uuid",
+  "seatIndex": 3,
+  "buyInAmount": 2000
+}
+```
+
+**Validation:**
+
+* User must be allowed at the table.
+* Seat must be free.
+* `buyInAmount` within allowed limits.
+
+**Server behavior:**
+
+* Delegate to `game.service` + DB: create/update `Seat`.
+* Update in-memory `TableState` as needed.
+* Broadcast updated `TABLE_STATE` to all at the table.
+
+---
+
+#### 3.2.2 `STAND_UP`
+
+Client requests to leave their seat (if rules allow).
+
+```json
+{
+  "type": "STAND_UP",
+  "tableId": "table-uuid"
+}
+```
+
+**Server behavior:**
+
+* Depending on implementation:
+
+  * If no active hand or allowed mid-hand: unseat user (or mark as `SITTING_OUT`).
+  * Persist seat change.
+* Broadcast new `TABLE_STATE`.
+
+---
+
+### 3.3 Gameplay Actions
+
+Core gameplay is expressed via a single message:
+
+#### 3.3.1 `PLAYER_ACTION`
+
+Client expresses intent to act in the current hand.
+
+```json
+{
+  "type": "PLAYER_ACTION",
+  "tableId": "table-uuid",
+  "handId": "hand-uuid",
+  "action": "CALL",
+  "amount": 40
+}
+```
+
+* `action`: one of `"FOLD" | "CHECK" | "CALL" | "BET" | "RAISE"`.
+* `amount`: required for `BET` or `RAISE`, ignored for others.
+
+**Server behavior:**
+
+* Resolve `userId` from JWT.
+* Lookup current `TableState` from Redis.
+* Verify:
+
+  * It’s that player’s turn.
+  * Hand id matches active hand.
+  * Action is legal given game rules.
+* Call engine:
+
+  * `engine.applyPlayerAction(state, action)`
+  * `engine.advanceIfReady(state)` as needed.
+* Persist results (e.g., when hand completes).
+* Broadcast:
+
+  * Updated `TABLE_STATE` (public view per user).
+  * `ACTION_TAKEN`, `HAND_RESULT` etc.
+
+On error (e.g., out-of-turn action):
+
+```json
+{
+  "type": "ERROR",
+  "code": "INVALID_ACTION",
+  "message": "It is not your turn."
+}
+```
+
+---
+
+### 3.4 Chat
+
+#### 3.4.1 `CHAT_SEND`
+
+Client sends a message to table chat.
+
+```json
+{
+  "type": "CHAT_SEND",
+  "tableId": "table-uuid",
+  "content": "Nice hand!"
+}
+```
+
+* Max length: 256 chars (enforced server-side).
+* Content must be sanitized (e.g., strip HTML).
+
+**Server behavior:**
+
+* Validate membership at `tableId`.
+* Validate content length.
+* Insert row into `chat_messages` table.
+* Broadcast `CHAT_MESSAGE` to `table:<tableId>` room.
+
+---
+
+### 3.5 Heartbeats / Ping (Optional)
+
+If you want client-initiated heartbeats:
+
+#### 3.5.1 `PING`
+
+```json
+{
+  "type": "PING"
+}
+```
+
+**Server response:**
+
+```json
+{
+  "type": "PONG",
+  "timestamp": "2025-11-16T20:00:00Z"
+}
+```
+
+---
+
+## 4. Server → Client Messages
+
+These are broadcast or targeted messages from server to clients.
+
+### 4.1 Connection & Table Lifecycle
+
+#### 4.1.1 `CONNECTED` (optional)
+
+Sent after a successful connection/auth handshake.
+
+```json
+{
+  "type": "CONNECTED",
+  "userId": "user-uuid"
+}
+```
+
+---
+
+#### 4.1.2 `TABLE_JOINED`
+
+Sent after successful `JOIN_TABLE`.
+
+```json
+{
+  "type": "TABLE_JOINED",
+  "tableId": "table-uuid"
+}
+```
+
+---
+
+#### 4.1.3 `TABLE_STATE`
+
+Represents the authoritative public view of the table, customized per user (only includes that user’s hole cards).
+
+```json
+{
+  "type": "TABLE_STATE",
+  "tableId": "table-uuid",
+  "state": {
+    "tableId": "table-uuid",
+    "seats": [
+      {
+        "seatIndex": 0,
+        "displayName": "Alice",
+        "stack": 1580,
+        "status": "ACTIVE",
+        "isSelf": false
+      },
+      {
+        "seatIndex": 1,
+        "displayName": "You",
+        "stack": 1420,
+        "status": "ACTIVE",
+        "isSelf": true
+      }
+    ],
+    "communityCards": ["Ah", "Kd", "7s"],
+    "potTotal": 360,
+    "street": "FLOP",
+    "toActSeatIndex": 1,
+    "minBet": 40,
+    "callAmount": 20,
+    "handId": "hand-uuid",
+    "holeCards": ["As", "Qs"]
+  }
+}
+```
+
+---
+
+### 4.2 Cards & Actions
+
+#### 4.2.1 `HOLE_CARDS`
+
+Sent to **only the player receiving them** when a new hand is dealt.
+
+```json
+{
+  "type": "HOLE_CARDS",
+  "tableId": "table-uuid",
+  "handId": "hand-uuid",
+  "cards": ["As", "Qs"]
+}
+```
+
+---
+
+#### 4.2.2 `ACTION_TAKEN`
+
+Sent whenever a valid action is applied.
+
+```json
+{
+  "type": "ACTION_TAKEN",
+  "tableId": "table-uuid",
+  "handId": "hand-uuid",
+  "seatIndex": 1,
+  "action": "RAISE",
+  "amount": 80,
+  "betting": {
+    "street": "FLOP",
+    "currentBet": 80,
+    "minRaise": 80,
+    "toActSeatIndex": 2
+  },
+  "potTotal": 360
+}
+```
+
+---
+
+#### 4.2.3 `HAND_RESULT`
+
+Sent when a hand completes (after showdown or everyone else folds).
+
+```json
+{
+  "type": "HAND_RESULT",
+  "tableId": "table-uuid",
+  "handId": "hand-uuid",
+  "results": {
+    "winners": [
+      {
+        "seatIndex": 1,
+        "handRank": "FULL_HOUSE",
+        "handDescription": "Full house, Queens full of Tens",
+        "wonAmount": 520
+      }
+    ],
+    "finalStacks": [
+      { "seatIndex": 0, "stack": 750 },
+      { "seatIndex": 1, "stack": 2250 }
+    ]
+  }
+}
+```
+
+The client should:
+
+* Display a summary popup.
+* Update its local view (and will also receive a `TABLE_STATE`).
+
+---
+
+### 4.3 Chat
+
+#### 4.3.1 `CHAT_MESSAGE`
+
+Broadcast to all users in the table when a chat message is created.
+
+```json
+{
+  "type": "CHAT_MESSAGE",
+  "tableId": "table-uuid",
+  "message": {
+    "id": "msg-uuid",
+    "userId": "user-uuid",
+    "displayName": "Rob",
+    "seatIndex": 3,
+    "content": "Nice hand!",
+    "createdAt": "2025-11-16T20:02:00Z"
+  }
+}
+```
+
+---
+
+### 4.4 Errors & System Messages
+
+#### 4.4.1 `ERROR`
+
+Generic error message.
+
+```json
+{
+  "type": "ERROR",
+  "code": "INVALID_ACTION",
+  "message": "It is not your turn."
+}
+```
+
+Common error codes:
+
+* `UNAUTHORIZED`
+* `TABLE_NOT_FOUND`
+* `NOT_IN_TABLE`
+* `INVALID_ACTION`
+* `INVALID_SEAT`
+* `SEAT_TAKEN`
+* `HAND_NOT_ACTIVE`
+* `INTERNAL_ERROR`
+
+---
+
+#### 4.4.2 `PONG`
+
+Response to client `PING` (if implemented).
+
+```json
+{
+  "type": "PONG",
+  "timestamp": "2025-11-16T20:00:00Z"
+}
+```
+
+---
+
+## 5. Message Sequence Examples
+
+### 5.1 Join Table & Receive Initial State
+
+1. Client connects (with token).
+2. Client sends:
+
+```json
+{ "type": "JOIN_TABLE", "tableId": "table-uuid" }
+```
+
+3. Server validates and replies:
+
+```json
+{ "type": "TABLE_JOINED", "tableId": "table-uuid" }
+```
+
+4. Server sends a fresh table snapshot:
+
+```json
+{ "type": "TABLE_STATE", "tableId": "table-uuid", "state": { ... } }
+```
+
+---
+
+### 5.2 Start Hand → Player Action → Hand Finish
+
+1. Backend (host or auto) starts a hand (via internal trigger):
+
+   * Engine runs `startHand`.
+   * `HOLE_CARDS` messages go to each seated player.
+   * `TABLE_STATE` updates go out.
+
+2. On player’s turn, their client sends:
+
+```json
+{
+  "type": "PLAYER_ACTION",
+  "tableId": "table-uuid",
+  "handId": "hand-uuid",
+  "action": "RAISE",
+  "amount": 80
+}
+```
+
+3. Server applies the action:
+
+   * If valid, engine returns updated state + events.
+
+4. Server broadcasts:
+
+```json
+{
+  "type": "ACTION_TAKEN",
+  "tableId": "table-uuid",
+  "handId": "hand-uuid",
+  "seatIndex": 2,
+  "action": "RAISE",
+  "amount": 80,
+  "betting": { ... },
+  "potTotal": 240
+}
+```
+
+5. After betting completes and showdown:
+
+   * Engine calculates winners.
+   * Server broadcasts:
+
+```json
+{
+  "type": "HAND_RESULT",
+  "tableId": "table-uuid",
+  "handId": "hand-uuid",
+  "results": { ... }
+}
+```
+
+6. Server also sends a new `TABLE_STATE` reflecting updated stacks.
+
+---
+
+### 5.3 Chat During Hand
+
+1. Client sends:
+
+```json
+{
+  "type": "CHAT_SEND",
+  "tableId": "table-uuid",
+  "content": "All in next hand!"
+}
+```
+
+2. Server persists message and broadcasts:
+
+```json
+{
+  "type": "CHAT_MESSAGE",
+  "tableId": "table-uuid",
+  "message": {
+    "id": "msg-uuid",
+    "userId": "user-uuid",
+    "displayName": "Rob",
+    "seatIndex": 2,
+    "content": "All in next hand!",
+    "createdAt": "2025-11-16T20:05:00Z"
+  }
+}
+```
+
+---
+
+## 6. Client Responsibilities
+
+* Maintain a **single WebSocket connection** per browser session when possible.
+* Handle reconnection logic:
+
+  * On reconnect, re-send `JOIN_TABLE` for active tables.
+* Treat server messages as the **source of truth**:
+
+  * Do not try to “predict” game state; just update UI from `TABLE_STATE` and event messages.
+* Handle `ERROR` messages gracefully:
+
+  * Show toast or inline error.
+  * Do not retry invalid actions blindly.
+
+---
+
+## 7. Server Responsibilities
+
+* Validate **all incoming messages**:
+
+  * Type, schema, table membership, turn, etc.
+* Enforce **rate limits** for spammy actions (especially `CHAT_SEND`).
+* Keep gameplay logic **only in the server** via the engine.
+* Never send:
+
+  * Other players’ hole cards.
+  * Deck order.
+
+---
+
+## 8. Versioning & Extensibility
+
+* Current protocol version: `v1`.
+* If breaking changes are required:
+
+  * Add a `protocolVersion` query param or a `HELLO`/`CONNECTED` payload field.
+  * Introduce new message types instead of changing semantics of existing ones when possible.
