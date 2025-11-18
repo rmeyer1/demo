@@ -1,9 +1,18 @@
 import { Server, Socket } from "socket.io";
 import { verifyAccessToken } from "../config/auth";
-import { handleTableMessage } from "./table.handler";
+import { tableHandlers } from "./table.handler";
 import { handleChatMessage } from "./chat.handler";
 import { logger } from "../config/logger";
-import { ChatSendMessage, PongMessage } from "./types";
+import { ChatSendMessage, ErrorMessage, PongMessage } from "./types";
+import {
+  chatSendSchema,
+  joinTableSchema,
+  leaveTableSchema,
+  playerActionSchema,
+  sitDownSchema,
+  standUpSchema,
+} from "./schemas";
+import { ZodSchema } from "zod";
 
 export function setupWebSocketGateway(io: Server): void {
   // Authentication middleware
@@ -35,46 +44,70 @@ export function setupWebSocketGateway(io: Server): void {
     socket.join(`user:${userId}`);
 
     // Send connection confirmation
-    socket.emit("message", {
-      type: "CONNECTED",
+    socket.emit("CONNECTED", {
       userId,
     });
 
-    // Handle incoming messages
-    socket.on("message", async (msg: any) => {
-      try {
-        if (!msg || typeof msg !== "object" || !msg.type) {
-          socket.emit("message", {
-            type: "ERROR",
-            code: "INVALID_MESSAGE",
-            message: "Invalid message format.",
-          });
-          return;
-        }
-
-        // Route message by type
-        if (msg.type.startsWith("CHAT_")) {
-          await handleChatMessage(io, socket, msg as ChatSendMessage);
-        } else if (msg.type === "PING") {
-          socket.emit("message", {
-            type: "PONG",
-            timestamp: new Date().toISOString(),
-          } as PongMessage);
-        } else {
-          await handleTableMessage(io, socket, msg);
-        }
-      } catch (error) {
-        logger.error("Error handling WebSocket message:", error);
-        socket.emit("message", {
-          type: "ERROR",
-          code: "INTERNAL_ERROR",
-          message: "An error occurred processing your message.",
-        });
-      }
+    // PING / PONG
+    socket.on("PING", () => {
+      socket.emit("PONG", {
+        timestamp: new Date().toISOString(),
+      } as PongMessage);
     });
+
+    // Table events
+    socket.on("JOIN_TABLE", validateAndHandle(socket, joinTableSchema, (data) =>
+      tableHandlers.handleJoinTable(io, socket, data, userId)
+    ));
+    socket.on("LEAVE_TABLE", validateAndHandle(socket, leaveTableSchema, (data) =>
+      tableHandlers.handleLeaveTable(io, socket, data)
+    ));
+    socket.on("SIT_DOWN", validateAndHandle(socket, sitDownSchema, (data) =>
+      tableHandlers.handleSitDown(io, socket, data, userId)
+    ));
+    socket.on("STAND_UP", validateAndHandle(socket, standUpSchema, (data) =>
+      tableHandlers.handleStandUp(io, socket, data, userId)
+    ));
+    socket.on("PLAYER_ACTION", validateAndHandle(socket, playerActionSchema, (data) =>
+      tableHandlers.handlePlayerAction(io, socket, data, userId)
+    ));
+
+    // Chat
+    socket.on("CHAT_SEND", validateAndHandle(socket, chatSendSchema, (data) =>
+      handleChatMessage(io, socket, data as ChatSendMessage)
+    ));
 
     socket.on("disconnect", (reason) => {
       logger.info(`WebSocket disconnected: ${userId}, reason: ${reason}`);
     });
   });
+}
+
+function validateAndHandle<T>(
+  socket: Socket,
+  schema: ZodSchema<T>,
+  handler: (data: T) => Promise<void> | void
+) {
+  return async (msg: unknown) => {
+    const parsed = schema.safeParse(msg);
+    if (!parsed.success) {
+      const firstIssue = parsed.error.issues[0];
+      const code = firstIssue?.message || "INVALID_PAYLOAD";
+      return sendError(socket, "PAYLOAD_INVALID", code);
+    }
+
+    try {
+      await handler(parsed.data);
+    } catch (error) {
+      logger.error("Error handling WS event:", error);
+      sendError(socket, "INTERNAL_ERROR", "An error occurred.");
+    }
+  };
+}
+
+function sendError(socket: Socket, code: string, message: string): void {
+  socket.emit("ERROR", {
+    code,
+    message,
+  } as ErrorMessage);
 }

@@ -31,8 +31,8 @@ export function useChat(tableId: string) {
   useEffect(() => {
     if (!socket || !connected) return;
 
-    const unsubscribe = on("CHAT_MESSAGE", (message: ChatMessage) => {
-      setMessages((prev) => [...prev, message]);
+    const unsubscribe = on("CHAT_MESSAGE", (payload: { message: ChatMessage }) => {
+      setMessages((prev) => [...prev, payload.message]);
     });
 
     return () => {
@@ -43,7 +43,7 @@ export function useChat(tableId: string) {
   const sendMessage = useCallback(
     (message: string) => {
       if (connected && message.trim()) {
-        emit("CHAT_SEND", { tableId, message });
+        emit("CHAT_SEND", { tableId, content: message });
       }
     },
     [connected, emit, tableId]
@@ -51,5 +51,3 @@ export function useChat(tableId: string) {
 
   return { messages, sendMessage, connected };
 }
-
-

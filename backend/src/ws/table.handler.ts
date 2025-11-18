@@ -1,49 +1,21 @@
 import { Server, Socket } from "socket.io";
-import {
-  JoinTableMessage,
-  LeaveTableMessage,
-  SitDownMessage,
-  StandUpMessage,
-  PlayerActionMessage,
-  ErrorMessage,
-} from "./types";
+import { ErrorMessage } from "./types";
 import { getTableById } from "../services/table.service";
 import { sitDown, standUp } from "../services/table.service";
 import { applyPlayerAction, getPublicTableView } from "../services/game.service";
 import { logger } from "../config/logger";
-
-export async function handleTableMessage(
-  io: Server,
-  socket: Socket,
-  msg: any
-): Promise<void> {
-  const userId = (socket as any).userId;
-
-  switch (msg.type) {
-    case "JOIN_TABLE":
-      await handleJoinTable(io, socket, msg as JoinTableMessage, userId);
-      break;
-    case "LEAVE_TABLE":
-      await handleLeaveTable(io, socket, msg as LeaveTableMessage);
-      break;
-    case "SIT_DOWN":
-      await handleSitDown(io, socket, msg as SitDownMessage, userId);
-      break;
-    case "STAND_UP":
-      await handleStandUp(io, socket, msg as StandUpMessage, userId);
-      break;
-    case "PLAYER_ACTION":
-      await handlePlayerAction(io, socket, msg as PlayerActionMessage, userId);
-      break;
-    default:
-      sendError(socket, "UNKNOWN_MESSAGE_TYPE", `Unknown message type: ${msg.type}`);
-  }
-}
+import {
+  JoinTableInput,
+  LeaveTableInput,
+  PlayerActionInput,
+  SitDownInput,
+  StandUpInput,
+} from "./schemas";
 
 async function handleJoinTable(
   io: Server,
   socket: Socket,
-  msg: JoinTableMessage,
+  msg: JoinTableInput,
   userId: string
 ): Promise<void> {
   try {
@@ -67,16 +39,14 @@ async function handleJoinTable(
     socket.join(`table:${msg.tableId}`);
 
     // Send confirmation
-    socket.emit("message", {
-      type: "TABLE_JOINED",
+    socket.emit("TABLE_JOINED", {
       tableId: msg.tableId,
     });
 
     // Send current table state
     const tableView = await getPublicTableView(msg.tableId, userId);
     if (tableView) {
-      socket.emit("message", {
-        type: "TABLE_STATE",
+      socket.emit("TABLE_STATE", {
         tableId: msg.tableId,
         state: tableView,
       });
@@ -90,7 +60,7 @@ async function handleJoinTable(
 async function handleLeaveTable(
   io: Server,
   socket: Socket,
-  msg: LeaveTableMessage
+  msg: LeaveTableInput
 ): Promise<void> {
   socket.leave(`table:${msg.tableId}`);
 }
@@ -98,7 +68,7 @@ async function handleLeaveTable(
 async function handleSitDown(
   io: Server,
   socket: Socket,
-  msg: SitDownMessage,
+  msg: SitDownInput,
   userId: string
 ): Promise<void> {
   try {
@@ -106,8 +76,7 @@ async function handleSitDown(
 
     // Broadcast updated table state to all in the room
     const tableView = await getPublicTableView(msg.tableId, userId);
-    io.to(`table:${msg.tableId}`).emit("message", {
-      type: "TABLE_STATE",
+    io.to(`table:${msg.tableId}`).emit("TABLE_STATE", {
       tableId: msg.tableId,
       state: tableView,
     });
@@ -120,7 +89,7 @@ async function handleSitDown(
 async function handleStandUp(
   io: Server,
   socket: Socket,
-  msg: StandUpMessage,
+  msg: StandUpInput,
   userId: string
 ): Promise<void> {
   try {
@@ -128,8 +97,7 @@ async function handleStandUp(
 
     // Broadcast updated table state
     const tableView = await getPublicTableView(msg.tableId, userId);
-    io.to(`table:${msg.tableId}`).emit("message", {
-      type: "TABLE_STATE",
+    io.to(`table:${msg.tableId}`).emit("TABLE_STATE", {
       tableId: msg.tableId,
       state: tableView,
     });
@@ -142,7 +110,7 @@ async function handleStandUp(
 async function handlePlayerAction(
   io: Server,
   socket: Socket,
-  msg: PlayerActionMessage,
+  msg: PlayerActionInput,
   userId: string
 ): Promise<void> {
   try {
@@ -152,8 +120,7 @@ async function handlePlayerAction(
     });
 
     // Broadcast action taken
-    io.to(`table:${msg.tableId}`).emit("message", {
-      type: "ACTION_TAKEN",
+    io.to(`table:${msg.tableId}`).emit("ACTION_TAKEN", {
       tableId: msg.tableId,
       handId: msg.handId,
       seatIndex: result.seatIndex,
@@ -167,15 +134,13 @@ async function handlePlayerAction(
     for (const event of result.events) {
       if (event.type === "HOLE_CARDS") {
         // Send hole cards only to the specific player
-        io.to(`user:${event.userId}`).emit("message", {
-          type: "HOLE_CARDS",
+        io.to(`user:${event.userId}`).emit("HOLE_CARDS", {
           tableId: msg.tableId,
           handId: msg.handId,
           cards: event.cards,
         });
       } else if (event.type === "HAND_RESULT") {
-        io.to(`table:${msg.tableId}`).emit("message", {
-          type: "HAND_RESULT",
+        io.to(`table:${msg.tableId}`).emit("HAND_RESULT", {
           tableId: msg.tableId,
           handId: msg.handId,
           results: event.results,
@@ -185,8 +150,7 @@ async function handlePlayerAction(
 
     // Send updated table state to all
     const tableView = await getPublicTableView(msg.tableId, userId);
-    io.to(`table:${msg.tableId}`).emit("message", {
-      type: "TABLE_STATE",
+    io.to(`table:${msg.tableId}`).emit("TABLE_STATE", {
       tableId: msg.tableId,
       state: tableView,
     });
@@ -197,10 +161,16 @@ async function handlePlayerAction(
 }
 
 function sendError(socket: Socket, code: string, message: string): void {
-  socket.emit("message", {
-    type: "ERROR",
+  socket.emit("ERROR", {
     code,
     message,
   } as ErrorMessage);
 }
 
+export const tableHandlers = {
+  handleJoinTable,
+  handleLeaveTable,
+  handleSitDown,
+  handleStandUp,
+  handlePlayerAction,
+};
