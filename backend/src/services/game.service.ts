@@ -297,6 +297,20 @@ export async function persistHandToDb(
     }))
     .filter((a) => a.userId);
 
+  // Derive VPIP / PFR from preflop actions
+  const vpipSeats = new Set<number>();
+  const pfrSeats = new Set<number>();
+  for (const action of handActions) {
+    if (action.street === "PREFLOP") {
+      if (["CALL", "BET", "RAISE", "ALL_IN"].includes(action.actionType)) {
+        vpipSeats.add(action.seatIndex);
+      }
+      if (["BET", "RAISE", "ALL_IN"].includes(action.actionType)) {
+        pfrSeats.add(action.seatIndex);
+      }
+    }
+  }
+
   const playerHands = handState.playerStates
     .filter((p: any) => seatUserMap.has(p.seatIndex))
     .map((p: any) => {
@@ -315,8 +329,8 @@ export async function persistHandToDb(
         userId: seatUserMap.get(p.seatIndex)!,
         holeCards,
         netChips,
-        vpipFlag: p.totalBet > 0,
-        pfrFlag: handState.betting?.lastAggressorSeatIndex === p.seatIndex,
+        vpipFlag: vpipSeats.has(p.seatIndex),
+        pfrFlag: pfrSeats.has(p.seatIndex),
         sawShowdown: Boolean(handResult),
         wonShowdown: wonAmount > 0,
         finalHandRank: winner?.handRank || null,
