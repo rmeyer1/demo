@@ -82,6 +82,8 @@ export async function registerTableRoutes(app: FastifyInstance) {
     "/:id",
     { preHandler: authenticate },
     async (request: FastifyRequest, reply: FastifyReply) => {
+      const req = request as AuthenticatedRequest;
+      const userId = req.userId;
       const params = request.params as { id: string };
       const table = await getTableById(params.id);
 
@@ -90,6 +92,17 @@ export async function registerTableRoutes(app: FastifyInstance) {
           error: {
             code: "TABLE_NOT_FOUND",
             message: "Table does not exist.",
+          },
+        });
+      }
+
+      const isHost = table.hostUserId === userId;
+      const isMember = table.seats.some((s) => s.userId === userId);
+      if (!isHost && !isMember) {
+        return reply.status(403).send({
+          error: {
+            code: "NOT_IN_TABLE",
+            message: "You are not a member of this table.",
           },
         });
       }
@@ -239,4 +252,3 @@ export async function registerTableRoutes(app: FastifyInstance) {
     }
   );
 }
-

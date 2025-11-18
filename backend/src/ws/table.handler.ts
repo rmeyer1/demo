@@ -11,6 +11,7 @@ import {
   SitDownInput,
   StandUpInput,
 } from "./schemas";
+import { checkRateLimit } from "../utils/rateLimiter";
 
 async function handleJoinTable(
   io: Server,
@@ -114,6 +115,17 @@ async function handlePlayerAction(
   userId: string
 ): Promise<void> {
   try {
+    const rlKey = `action:${userId}:${msg.tableId}`;
+    if (
+      !checkRateLimit(rlKey, {
+        windowMs: Number(process.env.ACTION_RATE_LIMIT_WINDOW_MS || 3000),
+        max: Number(process.env.ACTION_RATE_LIMIT_MAX || 8),
+      })
+    ) {
+      sendError(socket, "ACTION_RATE_LIMIT", "Too many actions. Please slow down.");
+      return;
+    }
+
     const result = await applyPlayerAction(msg.tableId, userId, msg.handId, {
       action: msg.action,
       amount: msg.amount,
