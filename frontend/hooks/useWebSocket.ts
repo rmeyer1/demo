@@ -13,10 +13,12 @@ export function useWebSocket(tableId?: string) {
     if (!tableId) return;
 
     let mounted = true;
+    let wsRef: Socket | null = null;
 
     const connect = async () => {
       try {
         const ws = await getSocket();
+        wsRef = ws;
         if (!mounted) return;
 
         ws.on("connect", () => {
@@ -49,12 +51,10 @@ export function useWebSocket(tableId?: string) {
 
     return () => {
       mounted = false;
-      if (socket) {
-        if (tableId) {
-          socket.emit("LEAVE_TABLE", { tableId });
-        }
-        disconnectSocket();
+      if (wsRef && tableId) {
+        wsRef.emit("LEAVE_TABLE", { tableId });
       }
+      disconnectSocket();
     };
   }, [tableId]);
 
@@ -81,5 +81,3 @@ export function useWebSocket(tableId?: string) {
 
   return { socket, connected, error, emit, on };
 }
-
-

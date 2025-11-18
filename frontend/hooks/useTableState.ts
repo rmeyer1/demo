@@ -11,16 +11,16 @@ export function useTableState(tableId: string) {
   useEffect(() => {
     if (!socket || !connected) return;
 
-    const unsubscribeTableState = on("TABLE_STATE", (state: TableState) => {
-      setTableState(state);
+    const unsubscribeTableState = on("TABLE_STATE", (payload: { state?: TableState }) => {
+      setTableState(payload.state ?? (payload as unknown as TableState));
     });
 
-    const unsubscribeActionTaken = on("ACTION_TAKEN", (state: TableState) => {
-      setTableState(state);
+    const unsubscribeActionTaken = on("ACTION_TAKEN", () => {
+      // ACTION_TAKEN broadcasts accompany a later TABLE_STATE; no-op here
     });
 
-    const unsubscribeHandResult = on("HAND_RESULT", (state: TableState) => {
-      setTableState(state);
+    const unsubscribeHandResult = on("HAND_RESULT", () => {
+      // HAND_RESULT handled via TABLE_STATE update
     });
 
     return () => {
@@ -32,5 +32,3 @@ export function useTableState(tableId: string) {
 
   return { tableState, connected };
 }
-
-

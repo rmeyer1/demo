@@ -46,8 +46,7 @@ export async function handleChatMessage(
     const message = await createChatMessage(msg.tableId, userId, msg.content, seatIndex);
 
     // Broadcast to table room
-    io.to(`table:${msg.tableId}`).emit("message", {
-      type: "CHAT_MESSAGE",
+    io.to(`table:${msg.tableId}`).emit("CHAT_MESSAGE", {
       tableId: msg.tableId,
       message: {
         id: message.id,
@@ -87,10 +86,8 @@ function checkRateLimit(userId: string): boolean {
 }
 
 function sendError(socket: Socket, code: string, message: string): void {
-  socket.emit("message", {
-    type: "ERROR",
+  socket.emit("ERROR", {
     code,
     message,
   } as ErrorMessage);
 }
-
