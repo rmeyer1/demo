@@ -9,10 +9,17 @@ async function getAuthToken(): Promise<string | null> {
   return session?.access_token || null;
 }
 
-async function request<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
+export class ApiError extends Error {
+  code?: string;
+  status?: number;
+  constructor(message: string, code?: string, status?: number) {
+    super(message);
+    this.code = code;
+    this.status = status;
+  }
+}
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = await getAuthToken();
 
   const headers: HeadersInit = {
@@ -30,12 +37,16 @@ async function request<T>(
     credentials: "include",
   });
 
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+
   if (!res.ok) {
-    const errorBody = await res.json().catch(() => ({}));
-    throw new Error(errorBody?.error?.message || res.statusText);
+    const code = data?.error?.code;
+    const message = data?.error?.message || res.statusText;
+    throw new ApiError(message, code, res.status);
   }
 
-  return res.json();
+  return data as T;
 }
 
 export const apiClient = {
@@ -55,5 +66,3 @@ export const apiClient = {
       method: "DELETE",
     }),
 };
-
-

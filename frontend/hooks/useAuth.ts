@@ -16,8 +16,11 @@ export function useAuth() {
         session?.user
           ? {
               id: session.user.id,
-              email: session.user.email,
-              displayName: session.user.user_metadata?.display_name,
+              email: session.user.email || undefined,
+              displayName:
+                session.user.user_metadata?.display_name ||
+                session.user.email ||
+                undefined,
             }
           : null
       );
@@ -30,8 +33,11 @@ export function useAuth() {
         data.session?.user
           ? {
               id: data.session.user.id,
-              email: data.session.user.email,
-              displayName: data.session.user.user_metadata?.display_name,
+              email: data.session.user.email || undefined,
+              displayName:
+                data.session.user.user_metadata?.display_name ||
+                data.session.user.email ||
+                undefined,
             }
           : null
       );
@@ -50,5 +56,3 @@ export function useAuth() {
 
   return { user, loading, signOut };
 }
-
-
