@@ -4,33 +4,23 @@ Texas Hold'em Home Game Platform Backend
 
 ## Setup
 
-1. Install dependencies:
+1. (Optional) Run the one-command bootstrap from repo root:
 ```bash
+./scripts/bootstrap-local.sh
+```
+
+2. Or do it manually:
+```bash
+cp ../.env.example ../.env
+cp .env.example .env
 npm install
-```
-
-2. Set up environment variables in `.env`:
-```env
-# Supabase
-SUPABASE_URL=https://<your>.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
-SUPABASE_JWT_SECRET=<supabase-jwt-secret>
-
-# Postgres (Supabase DB)
-DATABASE_URL=postgresql://postgres:<password>@db.<domain>.supabase.co:5432/postgres
-
-# Redis
-REDIS_URL=redis://localhost:6379
-
-# Backend
-PORT=4000
-NODE_ENV=development
-```
-
-3. Set up Prisma:
-```bash
 npm run prisma:generate
 npm run prisma:migrate
+```
+
+3. Seed demo data (two users + one table):
+```bash
+npm run seed
 ```
 
 4. Start the server:
@@ -62,4 +52,3 @@ See `/docs/specs/rest-api-spec.md` for full API documentation.
 ## WebSocket Protocol
 
 See `/docs/specs/web-socket-protocol.md` for WebSocket message format.
-

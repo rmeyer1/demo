@@ -10,6 +10,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
+    "seed": "ts-node scripts/seed.ts",
     "test": "vitest --watch=false",
     "test:integration": "playwright test tests/integration",
     "test:ws": "playwright test tests/websocket",
@@ -22,6 +23,7 @@
     "@fastify/cors": "^9.0.1",
     "@prisma/client": "^5.19.1",
     "@supabase/supabase-js": "^2.45.4",
+    "crypto": "^1.0.1",
     "dotenv": "^16.4.5",
     "fastify": "^4.28.1",
     "ioredis": "^5.4.1",
@@ -30,14 +32,14 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.48.2",
     "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^20.14.12",
     "nodemon": "^3.1.4",
     "prisma": "^5.19.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4",
-    "@playwright/test": "^1.48.2",
-    "ws": "^8.18.0",
-    "vitest": "^1.6.0"
+    "vitest": "^1.6.0",
+    "ws": "^8.18.0"
   }
 }
