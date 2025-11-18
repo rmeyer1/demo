@@ -66,6 +66,14 @@ export async function applyPlayerAction(
   // If hand completed, persist to DB
   if (result.events.some((e: any) => e.type === "HAND_COMPLETE")) {
     await persistHandToDb(tableId, handSnapshot, result.events, result.state.seats);
+    // Schedule next hand if eligible
+    scheduleAutoStart(tableId);
+  } else if (result.state.currentHand?.toActSeatIndex !== undefined) {
+    scheduleTurnTimeout(
+      tableId,
+      result.state.currentHand.handId,
+      result.state.currentHand.toActSeatIndex
+    );
   }
 
   return result;
@@ -88,20 +96,129 @@ export async function startHand(tableId: string) {
   // Save state
   await setTableStateInRedis(tableId, result.state);
 
+  if (result.state.currentHand?.toActSeatIndex !== undefined) {
+    scheduleTurnTimeout(
+      tableId,
+      result.state.currentHand.handId,
+      result.state.currentHand.toActSeatIndex
+    );
+  }
+
   return result;
+}
+
+export async function ensureTableState(tableId: string): Promise<any | null> {
+  let tableState = await getTableStateFromRedis(tableId);
+  if (!tableState) {
+    tableState = await initializeTableStateFromDb(tableId);
+    if (tableState) {
+      await setTableStateInRedis(tableId, tableState);
+    }
+  }
+  return tableState;
 }
 
 export async function getPublicTableView(
   tableId: string,
   userId: string
 ): Promise<any> {
-  const tableState = await getTableStateFromRedis(tableId);
+  const tableState = await ensureTableState(tableId);
 
   if (!tableState) {
     return null;
   }
 
   return engine.getPublicTableView(tableState, userId);
+}
+
+export async function startGame(tableId: string, hostUserId: string) {
+  const table = await prisma.table.findUnique({
+    where: { id: tableId },
+    select: { hostUserId: true, status: true },
+  });
+
+  if (!table) {
+    throw new Error("TABLE_NOT_FOUND");
+  }
+  if (table.hostUserId !== hostUserId) {
+    throw new Error("NOT_TABLE_HOST");
+  }
+
+  // Ensure state exists
+  await ensureTableState(tableId);
+
+  // Mark table as in-game
+  if (table.status !== "IN_GAME") {
+    await prisma.table.update({ where: { id: tableId }, data: { status: "IN_GAME" } });
+  }
+
+  // Start first hand
+  return startHand(tableId);
+}
+
+// --- Auto-start orchestration ---
+const autoStartTimers = new Map<string, NodeJS.Timeout>();
+const AUTO_START_DELAY_MS = 2000;
+const turnTimers = new Map<string, NodeJS.Timeout>();
+const TURN_TIMEOUT_MS = 15000; // stub timeout
+
+export async function scheduleAutoStart(tableId: string, delayMs = AUTO_START_DELAY_MS) {
+  clearAutoStart(tableId);
+
+  const timer = setTimeout(async () => {
+    try {
+      const table = await prisma.table.findUnique({
+        where: { id: tableId },
+        select: { status: true },
+      });
+      if (!table || table.status !== "IN_GAME") return;
+
+      const state = await ensureTableState(tableId);
+      if (!state || state.currentHand) return;
+
+      const eligible = state.seats.filter(
+        (s: any) => s.userId && !s.isSittingOut && s.stack > 0
+      );
+      if (eligible.length < 2) return;
+
+      await startHand(tableId);
+    } catch (err) {
+      logger.error("Auto-start hand failed", err);
+    } finally {
+      clearAutoStart(tableId);
+    }
+  }, delayMs);
+
+  autoStartTimers.set(tableId, timer);
+}
+
+export function clearAutoStart(tableId: string) {
+  const timer = autoStartTimers.get(tableId);
+  if (timer) {
+    clearTimeout(timer);
+    autoStartTimers.delete(tableId);
+  }
+}
+
+export function scheduleTurnTimeout(
+  tableId: string,
+  handId: string,
+  toActSeatIndex: number,
+  timeoutMs = TURN_TIMEOUT_MS
+) {
+  const key = `${tableId}:${handId}`;
+  const existing = turnTimers.get(key);
+  if (existing) clearTimeout(existing);
+
+  const timer = setTimeout(() => {
+    // Stub for auto-fold/auto-check: implement action dispatch here
+    logger.info(
+      `Turn timeout (stub) for table ${tableId}, hand ${handId}, seat ${toActSeatIndex}`
+    );
+    turnTimers.delete(key);
+  }, timeoutMs);
+
+  turnTimers.set(key, timer);
 }
 
 async function initializeTableStateFromDb(tableId: string): Promise<any | null> {

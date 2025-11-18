@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { TableState } from "@/lib/types";
 import { useWebSocket } from "./useWebSocket";
 
 export function useTableState(tableId: string) {
   const [tableState, setTableState] = useState<TableState | null>(null);
-  const { socket, connected, on } = useWebSocket(tableId);
+  const { socket, connected, on, emit } = useWebSocket(tableId);
 
   useEffect(() => {
     if (!socket || !connected) return;
@@ -30,5 +30,11 @@ export function useTableState(tableId: string) {
     };
   }, [socket, connected, on]);
 
-  return { tableState, connected };
+  const startGame = useCallback(() => {
+    if (connected) {
+      emit("GAME_START", { tableId });
+    }
+  }, [connected, emit, tableId]);
+
+  return { tableState, connected, startGame };
 }
