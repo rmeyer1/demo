@@ -28,56 +28,30 @@ export async function getDashboardSummary(
         completedAt: dateFilter ? { gte: dateFilter } : undefined,
       },
     },
+    select: {
+      netChips: true,
+      vpipFlag: true,
+      pfrFlag: true,
+      sawShowdown: true,
+      wonShowdown: true,
+    },
   });
 
-  const totalHands = playerHands.length;
-  const netChips = playerHands.reduce((sum, ph) => sum + ph.netChips, 0);
-  const vpipHands = playerHands.filter((ph) => ph.vpipFlag).length;
-  const pfrHands = playerHands.filter((ph) => ph.pfrFlag).length;
-  const showdownHands = playerHands.filter((ph) => ph.sawShowdown).length;
-  const wonShowdownHands = playerHands.filter((ph) => ph.wonShowdown).length;
-
-  const vpip = totalHands > 0 ? vpipHands / totalHands : 0;
-  const pfr = totalHands > 0 ? pfrHands / totalHands : 0;
-  const showdownWinPct =
-    showdownHands > 0 ? wonShowdownHands / showdownHands : 0;
-
-  // Calculate BB/100 (big blinds per 100 hands)
-  // We need to get average big blind from hands
   const handsWithBlinds = await prisma.hand.findMany({
     where: {
       playerHands: {
-        some: {
-          userId,
-        },
+        some: { userId },
       },
       completedAt: dateFilter ? { gte: dateFilter } : undefined,
     },
-    include: {
+    select: {
       table: {
-        select: {
-          bigBlind: true,
-        },
+        select: { bigBlind: true },
       },
     },
   });
 
-  const avgBigBlind =
-    handsWithBlinds.length > 0
-      ? handsWithBlinds.reduce((sum, h) => sum + h.table.bigBlind, 0) /
-        handsWithBlinds.length
-      : 20; // Default fallback
-
-  const bbPer100 = avgBigBlind > 0 ? (netChips / avgBigBlind / totalHands) * 100 : 0;
-
-  return {
-    totalHands,
-    netChips,
-    vpip,
-    pfr,
-    showdownWinPct,
-    bbPer100,
-  };
+  return calculateDashboardSummary(playerHands, handsWithBlinds);
 }
 
 export async function getDashboardProgression(
@@ -179,3 +153,43 @@ function getDateFilter(range: "lifetime" | "7d" | "30d"): Date | null {
   return filterDate;
 }
 
+// --- Pure helpers (tested) ---
+export function calculateDashboardSummary(
+  playerHands: Array<{
+    netChips: number;
+    vpipFlag: boolean;
+    pfrFlag: boolean;
+    sawShowdown: boolean;
+    wonShowdown: boolean;
+  }>,
+  handsWithBlinds: Array<{ table: { bigBlind: number } }>
+): DashboardSummary {
+  const totalHands = playerHands.length;
+  const netChips = playerHands.reduce((sum, ph) => sum + ph.netChips, 0);
+  const vpipHands = playerHands.filter((ph) => ph.vpipFlag).length;
+  const pfrHands = playerHands.filter((ph) => ph.pfrFlag).length;
+  const showdownHands = playerHands.filter((ph) => ph.sawShowdown).length;
+  const wonShowdownHands = playerHands.filter((ph) => ph.wonShowdown).length;
+
+  const vpip = totalHands > 0 ? vpipHands / totalHands : 0;
+  const pfr = totalHands > 0 ? pfrHands / totalHands : 0;
+  const showdownWinPct = showdownHands > 0 ? wonShowdownHands / showdownHands : 0;
+
+  const avgBigBlind =
+    handsWithBlinds.length > 0
+      ? handsWithBlinds.reduce((sum, h) => sum + h.table.bigBlind, 0) /
+        handsWithBlinds.length
+      : 0;
+
+  const bbPer100 =
+    avgBigBlind > 0 && totalHands > 0 ? (netChips / avgBigBlind / totalHands) * 100 : 0;
+
+  return {
+    totalHands,
+    netChips,
+    vpip,
+    pfr,
+    showdownWinPct,
+    bbPer100,
+  };
+}
