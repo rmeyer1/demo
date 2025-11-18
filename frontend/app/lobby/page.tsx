@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
@@ -71,13 +71,14 @@ export default function LobbyPage() {
     }
   };
 
-  if (authLoading) {
-    return <div className="text-center text-slate-400">Loading...</div>;
-  }
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/auth/login");
+    }
+  }, [authLoading, user, router]);
 
-  if (!user) {
-    router.push("/auth/login");
-    return null;
+  if (authLoading || !user) {
+    return <div className="text-center text-slate-400">Loading...</div>;
   }
 
   return (
