@@ -53,6 +53,7 @@ export async function registerTableRoutes(app: FastifyInstance) {
           smallBlind: body.smallBlind,
           bigBlind: body.bigBlind,
           hostUserId: userId,
+          hostEmail: req.userEmail,
         });
 
         return reply.status(201).send({

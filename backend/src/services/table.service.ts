@@ -7,6 +7,8 @@ export interface CreateTableInput {
   smallBlind: number;
   bigBlind: number;
   hostUserId: string;
+  hostEmail?: string;
+  hostDisplayName?: string;
 }
 
 export interface TableWithSeats {
@@ -38,50 +40,75 @@ function generateInviteCode(): string {
   return code;
 }
 
-export async function createTable(input: CreateTableInput): Promise<TableWithSeats> {
-  // Generate unique invite code
-  let inviteCode = generateInviteCode();
-  let attempts = 0;
-  while (await prisma.table.findUnique({ where: { inviteCode } })) {
-    inviteCode = generateInviteCode();
-    attempts++;
-    if (attempts > 10) {
-      throw new Error("Failed to generate unique invite code");
+function resolveHostDisplayName(input: CreateTableInput): string {
+  if (input.hostDisplayName?.trim()) {
+    return input.hostDisplayName.trim();
+  }
+
+  if (input.hostEmail) {
+    const localPart = input.hostEmail.split("@")[0];
+    if (localPart) {
+      return localPart;
     }
   }
 
-  const table = await prisma.table.create({
-    data: {
-      hostUserId: input.hostUserId,
-      name: input.name,
-      inviteCode,
-      maxPlayers: input.maxPlayers,
-      smallBlind: input.smallBlind,
-      bigBlind: input.bigBlind,
-      status: "OPEN",
-      seats: {
-        create: Array.from({ length: input.maxPlayers }, (_, i) => ({
-          seatIndex: i,
-          userId: null,
-          stack: 0,
-          isSittingOut: false,
-        })),
+  return `player-${input.hostUserId.slice(0, 8)}`;
+}
+
+export async function createTable(input: CreateTableInput): Promise<TableWithSeats> {
+  const table = await prisma.$transaction(async (tx) => {
+    // Generate unique invite code inside the same transaction to avoid races
+    let inviteCode = generateInviteCode();
+    let attempts = 0;
+    while (await tx.table.findUnique({ where: { inviteCode } })) {
+      inviteCode = generateInviteCode();
+      attempts++;
+      if (attempts > 10) {
+        throw new Error("Failed to generate unique invite code");
+      }
+    }
+
+    // Ensure the hosting user has a profile row to satisfy FK constraint
+    const hostDisplayName = resolveHostDisplayName(input);
+    await tx.profile.upsert({
+      where: { id: input.hostUserId },
+      update: { displayName: hostDisplayName, updatedAt: new Date() },
+      create: { id: input.hostUserId, displayName: hostDisplayName },
+    });
+
+    return tx.table.create({
+      data: {
+        hostUserId: input.hostUserId,
+        name: input.name,
+        inviteCode,
+        maxPlayers: input.maxPlayers,
+        smallBlind: input.smallBlind,
+        bigBlind: input.bigBlind,
+        status: "OPEN",
+        seats: {
+          create: Array.from({ length: input.maxPlayers }, (_, i) => ({
+            seatIndex: i,
+            userId: null,
+            stack: 0,
+            isSittingOut: false,
+          })),
+        },
       },
-    },
-    include: {
-      seats: {
-        include: {
-          user: {
-            select: {
-              displayName: true,
+      include: {
+        seats: {
+          include: {
+            user: {
+              select: {
+                displayName: true,
+              },
             },
           },
-        },
-        orderBy: {
-          seatIndex: "asc",
+          orderBy: {
+            seatIndex: "asc",
+          },
         },
       },
-    },
+    });
   });
 
   return formatTableWithSeats(table);
@@ -289,4 +316,3 @@ export async function setTableStateInRedis(tableId: string, state: any): Promise
 export async function deleteTableStateFromRedis(tableId: string): Promise<void> {
   await redis.del(`table:state:${tableId}`);
 }
-

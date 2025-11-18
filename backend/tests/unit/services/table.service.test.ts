@@ -8,7 +8,18 @@ import {
   deleteTableStateFromRedis,
 } from "../../../src/services/table.service";
 
+const mockTx = vi.hoisted(() => ({
+  table: {
+    findUnique: vi.fn(),
+    create: vi.fn(),
+  },
+  profile: {
+    upsert: vi.fn(),
+  },
+}));
+
 const mockPrisma = vi.hoisted(() => ({
+  $transaction: vi.fn(async (cb: any) => cb(mockTx)),
   table: {
     findUnique: vi.fn(),
     create: vi.fn(),
@@ -18,6 +29,9 @@ const mockPrisma = vi.hoisted(() => ({
   seat: {
     findFirst: vi.fn(),
     update: vi.fn(),
+  },
+  profile: {
+    upsert: vi.fn(),
   },
 }));
 
@@ -31,9 +45,16 @@ vi.mock("../../../src/db/prisma", () => ({ prisma: mockPrisma }));
 vi.mock("../../../src/db/redis", () => ({ redis: mockRedis }));
 
 const resetMocks = () => {
-  for (const section of Object.values(mockPrisma)) {
-    for (const fn of Object.values(section)) {
+  mockPrisma.$transaction.mockClear();
+  for (const section of Object.values(mockTx)) {
+    for (const fn of Object.values(section as Record<string, any>)) {
       fn.mockReset();
+    }
+  }
+  for (const section of Object.values(mockPrisma)) {
+    if (typeof section === "function") continue;
+    for (const fn of Object.values(section as Record<string, any>)) {
+      fn.mockReset?.();
     }
   }
   for (const fn of Object.values(mockRedis)) {
@@ -44,15 +65,21 @@ const resetMocks = () => {
 describe("table.service", () => {
   beforeEach(() => {
     resetMocks();
+    mockTx.profile.upsert.mockResolvedValue({
+      id: "user-1",
+      displayName: "player-user-1",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
   });
 
-  it("generates a new invite code after a collision and creates seats", async () => {
-    mockPrisma.table.findUnique
-      .mockResolvedValueOnce({ id: "existing" }) // first code collides
-      .mockResolvedValueOnce(null); // second code is free
+  it("generates a new invite code after a collision, ensures host profile, and creates seats", async () => {
+    mockTx.table.findUnique
+      .mockResolvedValueOnce({ id: "existing" })
+      .mockResolvedValueOnce(null);
 
     const createdAt = new Date("2024-01-01T00:00:00.000Z");
-    mockPrisma.table.create.mockResolvedValue({
+    mockTx.table.create.mockResolvedValue({
       id: "table-1",
       hostUserId: "user-1",
       name: "Friday Night",
@@ -70,14 +97,12 @@ describe("table.service", () => {
 
     const randomSpy = vi
       .spyOn(Math, "random")
-      // first attempt -> "AAAAAA"
       .mockReturnValueOnce(0)
       .mockReturnValueOnce(0)
       .mockReturnValueOnce(0)
       .mockReturnValueOnce(0)
       .mockReturnValueOnce(0)
       .mockReturnValueOnce(0)
-      // second attempt -> "BBBBBB"
       .mockReturnValueOnce(0.03)
       .mockReturnValueOnce(0.03)
       .mockReturnValueOnce(0.03)
@@ -91,10 +116,17 @@ describe("table.service", () => {
       smallBlind: 5,
       bigBlind: 10,
       hostUserId: "user-1",
+      hostEmail: "host@example.com",
     });
 
-    expect(mockPrisma.table.findUnique).toHaveBeenCalledTimes(2);
-    expect(mockPrisma.table.create).toHaveBeenCalledWith(
+    expect(mockTx.profile.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "user-1" },
+        create: expect.objectContaining({ displayName: "host" }),
+      })
+    );
+    expect(mockTx.table.findUnique).toHaveBeenCalledTimes(2);
+    expect(mockTx.table.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           inviteCode: "BBBBBB",
@@ -109,6 +141,37 @@ describe("table.service", () => {
     expect(result.createdAt).toEqual(createdAt);
 
     randomSpy.mockRestore();
+  });
+
+  it("derives a stable profile name when no email is provided", async () => {
+    mockPrisma.table.findUnique.mockResolvedValue(null);
+    mockTx.table.create.mockResolvedValue({
+      id: "table-2",
+      hostUserId: "host-12345",
+      name: "Fallback Table",
+      inviteCode: "ABCDEF",
+      maxPlayers: 6,
+      smallBlind: 5,
+      bigBlind: 10,
+      status: "OPEN",
+      createdAt: new Date("2025-01-01T00:00:00.000Z"),
+      seats: [],
+    });
+
+    await createTable({
+      name: "Fallback Table",
+      maxPlayers: 6,
+      smallBlind: 5,
+      bigBlind: 10,
+      hostUserId: "host-12345",
+    });
+
+    expect(mockTx.profile.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "host-12345" },
+        create: expect.objectContaining({ displayName: "player-host-123" }),
+      })
+    );
   });
 
   it("throws when sitDown targets a taken seat", async () => {
