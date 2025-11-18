@@ -3,11 +3,10 @@ import { ChatSendMessage, ErrorMessage } from "./types";
 import { createChatMessage } from "../services/chat.service";
 import { getTableById } from "../services/table.service";
 import { logger } from "../config/logger";
+import { checkRateLimit } from "../utils/rateLimiter";
 
-// Simple rate limiting (in-memory, per user)
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_WINDOW = 5000; // 5 seconds
-const RATE_LIMIT_MAX = 5; // 5 messages per window
+const CHAT_RATE_LIMIT_WINDOW = Number(process.env.CHAT_RATE_LIMIT_WINDOW_MS || 5000);
+const CHAT_RATE_LIMIT_MAX = Number(process.env.CHAT_RATE_LIMIT_MAX || 5);
 
 export async function handleChatMessage(
   io: Server,
@@ -18,7 +17,12 @@ export async function handleChatMessage(
 
   try {
     // Rate limiting
-    if (!checkRateLimit(userId)) {
+    if (
+      !checkRateLimit(`chat:${userId}`, {
+        windowMs: CHAT_RATE_LIMIT_WINDOW,
+        max: CHAT_RATE_LIMIT_MAX,
+      })
+    ) {
       sendError(socket, "CHAT_RATE_LIMIT", "Too many messages. Please slow down.");
       return;
     }
@@ -66,23 +70,6 @@ export async function handleChatMessage(
       sendError(socket, "INTERNAL_ERROR", "Failed to send chat message.");
     }
   }
-}
-
-function checkRateLimit(userId: string): boolean {
-  const now = Date.now();
-  const userLimit = rateLimitMap.get(userId);
-
-  if (!userLimit || now > userLimit.resetAt) {
-    rateLimitMap.set(userId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
-    return true;
-  }
-
-  if (userLimit.count >= RATE_LIMIT_MAX) {
-    return false;
-  }
-
-  userLimit.count++;
-  return true;
 }
 
 function sendError(socket: Socket, code: string, message: string): void {
