@@ -8,13 +8,21 @@ export interface User {
 
 export interface Table {
   id: string;
+  hostUserId: string;
   name: string;
-  hostId: string;
   status: "OPEN" | "IN_GAME" | "CLOSED";
-  playerCount: number;
+  maxPlayers: number;
+  smallBlind: number;
+  bigBlind: number;
   inviteCode: string;
   createdAt: string;
-  updatedAt: string;
+  seats?: {
+    seatIndex: number;
+    userId: string | null;
+    displayName: string | null;
+    stack: number;
+    isSittingOut: boolean;
+  }[];
 }
 
 export interface TableState {
@@ -65,5 +73,3 @@ export interface DashboardProgression {
   netChips: number;
   hands: number;
 }
-
-

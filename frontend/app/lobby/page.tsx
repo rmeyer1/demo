@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { apiClient } from "@/lib/apiClient";
+import { apiClient, ApiError } from "@/lib/apiClient";
 import type { Table } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -14,15 +14,19 @@ import { Modal } from "@/components/ui/Modal";
 export default function LobbyPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const queryClient = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [tableName, setTableName] = useState("");
+  const [maxPlayers, setMaxPlayers] = useState(6);
+  const [smallBlind, setSmallBlind] = useState(5);
+  const [bigBlind, setBigBlind] = useState(10);
   const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
 
   const { data: tables, isLoading } = useQuery({
     queryKey: ["tables"],
-    queryFn: () => apiClient.get<Table[]>("/api/tables"),
+    queryFn: () => apiClient.get<Table[]>("/api/tables/my-tables"),
     enabled: !!user,
   });
 
@@ -35,9 +39,13 @@ export default function LobbyPage() {
     try {
       const table = await apiClient.post<Table>("/api/tables", {
         name: tableName,
+        maxPlayers,
+        smallBlind,
+        bigBlind,
       });
       setShowCreateModal(false);
       setTableName("");
+      queryClient.invalidateQueries({ queryKey: ["tables"] });
       router.push(`/table/${table.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create table");
@@ -51,21 +59,20 @@ export default function LobbyPage() {
     }
 
     try {
-      const table = await apiClient.post<Table>("/api/tables/join", {
-        inviteCode: inviteCode.trim(),
-      });
+      const table = await apiClient.post<{ tableId: string; name: string; maxPlayers: number; status: string }>(
+        "/api/tables/join-by-code",
+        { inviteCode: inviteCode.trim() }
+      );
       setShowJoinModal(false);
       setInviteCode("");
-      router.push(`/table/${table.id}`);
+      router.push(`/table/${table.tableId}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to join table");
+      setError(err instanceof ApiError ? err.message : "Failed to join table");
     }
   };
 
   if (authLoading) {
-    return (
-      <div className="text-center text-slate-400">Loading...</div>
-    );
+    return <div className="text-center text-slate-400">Loading...</div>;
   }
 
   if (!user) {
@@ -100,7 +107,7 @@ export default function LobbyPage() {
               </h3>
               <div className="space-y-1 text-sm text-slate-400">
                 <p>Status: {table.status}</p>
-                <p>Players: {table.playerCount}</p>
+                <p>Seats: {table.maxPlayers}</p>
                 <p>Code: {table.inviteCode}</p>
               </div>
             </Card>
@@ -130,6 +137,30 @@ export default function LobbyPage() {
             onChange={(e) => setTableName(e.target.value)}
             placeholder="Friday Night Poker"
           />
+          <div className="grid grid-cols-3 gap-3">
+            <Input
+              type="number"
+              label="Max Players"
+              value={maxPlayers}
+              onChange={(e) => setMaxPlayers(Number(e.target.value))}
+              min={2}
+              max={9}
+            />
+            <Input
+              type="number"
+              label="Small Blind"
+              value={smallBlind}
+              onChange={(e) => setSmallBlind(Number(e.target.value))}
+              min={1}
+            />
+            <Input
+              type="number"
+              label="Big Blind"
+              value={bigBlind}
+              onChange={(e) => setBigBlind(Number(e.target.value))}
+              min={1}
+            />
+          </div>
           {error && (
             <div className="p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-300 text-sm">
               {error}
@@ -190,5 +221,3 @@ export default function LobbyPage() {
     </div>
   );
 }
-
-
