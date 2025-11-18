@@ -8,7 +8,18 @@ import {
   deleteTableStateFromRedis,
 } from "../../../src/services/table.service";
 
+const mockTx = vi.hoisted(() => ({
+  table: {
+    findUnique: vi.fn(),
+    create: vi.fn(),
+  },
+  profile: {
+    upsert: vi.fn(),
+  },
+}));
+
 const mockPrisma = vi.hoisted(() => ({
+  $transaction: vi.fn(async (cb: any) => cb(mockTx)),
   table: {
     findUnique: vi.fn(),
     create: vi.fn(),
@@ -34,9 +45,16 @@ vi.mock("../../../src/db/prisma", () => ({ prisma: mockPrisma }));
 vi.mock("../../../src/db/redis", () => ({ redis: mockRedis }));
 
 const resetMocks = () => {
-  for (const section of Object.values(mockPrisma)) {
+  mockPrisma.$transaction.mockClear();
+  for (const section of Object.values(mockTx)) {
     for (const fn of Object.values(section as Record<string, any>)) {
       fn.mockReset();
+    }
+  }
+  for (const section of Object.values(mockPrisma)) {
+    if (typeof section === "function") continue;
+    for (const fn of Object.values(section as Record<string, any>)) {
+      fn.mockReset?.();
     }
   }
   for (const fn of Object.values(mockRedis)) {
@@ -47,7 +65,7 @@ const resetMocks = () => {
 describe("table.service", () => {
   beforeEach(() => {
     resetMocks();
-    mockPrisma.profile.upsert.mockResolvedValue({
+    mockTx.profile.upsert.mockResolvedValue({
       id: "user-1",
       displayName: "player-user-1",
       createdAt: new Date(),
@@ -56,12 +74,12 @@ describe("table.service", () => {
   });
 
   it("generates a new invite code after a collision, ensures host profile, and creates seats", async () => {
-    mockPrisma.table.findUnique
+    mockTx.table.findUnique
       .mockResolvedValueOnce({ id: "existing" })
       .mockResolvedValueOnce(null);
 
     const createdAt = new Date("2024-01-01T00:00:00.000Z");
-    mockPrisma.table.create.mockResolvedValue({
+    mockTx.table.create.mockResolvedValue({
       id: "table-1",
       hostUserId: "user-1",
       name: "Friday Night",
@@ -101,14 +119,14 @@ describe("table.service", () => {
       hostEmail: "host@example.com",
     });
 
-    expect(mockPrisma.profile.upsert).toHaveBeenCalledWith(
+    expect(mockTx.profile.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "user-1" },
         create: expect.objectContaining({ displayName: "host" }),
       })
     );
-    expect(mockPrisma.table.findUnique).toHaveBeenCalledTimes(2);
-    expect(mockPrisma.table.create).toHaveBeenCalledWith(
+    expect(mockTx.table.findUnique).toHaveBeenCalledTimes(2);
+    expect(mockTx.table.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           inviteCode: "BBBBBB",
@@ -127,7 +145,7 @@ describe("table.service", () => {
 
   it("derives a stable profile name when no email is provided", async () => {
     mockPrisma.table.findUnique.mockResolvedValue(null);
-    mockPrisma.table.create.mockResolvedValue({
+    mockTx.table.create.mockResolvedValue({
       id: "table-2",
       hostUserId: "host-12345",
       name: "Fallback Table",
@@ -148,7 +166,7 @@ describe("table.service", () => {
       hostUserId: "host-12345",
     });
 
-    expect(mockPrisma.profile.upsert).toHaveBeenCalledWith(
+    expect(mockTx.profile.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "host-12345" },
         create: expect.objectContaining({ displayName: "player-host-123" }),
