@@ -7,6 +7,8 @@ export interface CreateTableInput {
   smallBlind: number;
   bigBlind: number;
   hostUserId: string;
+  hostEmail?: string;
+  hostDisplayName?: string;
 }
 
 export interface TableWithSeats {
@@ -38,6 +40,21 @@ function generateInviteCode(): string {
   return code;
 }
 
+function resolveHostDisplayName(input: CreateTableInput): string {
+  if (input.hostDisplayName?.trim()) {
+    return input.hostDisplayName.trim();
+  }
+
+  if (input.hostEmail) {
+    const localPart = input.hostEmail.split("@")[0];
+    if (localPart) {
+      return localPart;
+    }
+  }
+
+  return `player-${input.hostUserId.slice(0, 8)}`;
+}
+
 export async function createTable(input: CreateTableInput): Promise<TableWithSeats> {
   // Generate unique invite code
   let inviteCode = generateInviteCode();
@@ -49,6 +66,14 @@ export async function createTable(input: CreateTableInput): Promise<TableWithSea
       throw new Error("Failed to generate unique invite code");
     }
   }
+
+  // Ensure the hosting user has a profile row to satisfy FK constraint
+  const hostDisplayName = resolveHostDisplayName(input);
+  await prisma.profile.upsert({
+    where: { id: input.hostUserId },
+    update: { displayName: hostDisplayName, updatedAt: new Date() },
+    create: { id: input.hostUserId, displayName: hostDisplayName },
+  });
 
   const table = await prisma.table.create({
     data: {
@@ -289,4 +314,3 @@ export async function setTableStateInRedis(tableId: string, state: any): Promise
 export async function deleteTableStateFromRedis(tableId: string): Promise<void> {
   await redis.del(`table:state:${tableId}`);
 }
-
