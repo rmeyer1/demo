@@ -35,9 +35,14 @@ export const chatSendSchema = z.object({
   content: z.string().min(1).max(256),
 });
 
+export const gameStartSchema = z.object({
+  tableId: uuid(),
+});
+
 export type JoinTableInput = z.infer<typeof joinTableSchema>;
 export type LeaveTableInput = z.infer<typeof leaveTableSchema>;
 export type SitDownInput = z.infer<typeof sitDownSchema>;
 export type StandUpInput = z.infer<typeof standUpSchema>;
 export type PlayerActionInput = z.infer<typeof playerActionSchema>;
 export type ChatSendInput = z.infer<typeof chatSendSchema>;
+export type GameStartInput = z.infer<typeof gameStartSchema>;

@@ -6,6 +6,7 @@ import { logger } from "../config/logger";
 import { ChatSendMessage, ErrorMessage, PongMessage } from "./types";
 import {
   chatSendSchema,
+  gameStartSchema,
   joinTableSchema,
   leaveTableSchema,
   playerActionSchema,
@@ -13,6 +14,8 @@ import {
   standUpSchema,
 } from "./schemas";
 import { ZodSchema } from "zod";
+import { startGame, getPublicTableView } from "../services/game.service";
+import { getTableById } from "../services/table.service";
 
 export function setupWebSocketGateway(io: Server): void {
   // Authentication middleware
@@ -71,6 +74,28 @@ export function setupWebSocketGateway(io: Server): void {
     socket.on("PLAYER_ACTION", validateAndHandle(socket, playerActionSchema, (data) =>
       tableHandlers.handlePlayerAction(io, socket, data, userId)
     ));
+    socket.on("GAME_START", validateAndHandle(socket, gameStartSchema, async (data) => {
+      const table = await getTableById(data.tableId);
+      if (!table || table.hostUserId !== userId) {
+        return sendError(socket, "NOT_TABLE_HOST", "Only host can start the game.");
+      }
+      try {
+        const result = await startGame(data.tableId, userId);
+        const view = await getPublicTableView(data.tableId, userId);
+        io.to(`table:${data.tableId}`).emit("TABLE_STATE", {
+          tableId: data.tableId,
+          state: view,
+        });
+        for (const event of result.events) {
+          if (event.type === "HOLE_CARDS") {
+            io.to(`user:${event.userId}`).emit("HOLE_CARDS", event);
+          }
+        }
+      } catch (err: any) {
+        const code = err?.message || "GAME_START_FAILED";
+        sendError(socket, code, "Failed to start game.");
+      }
+    }));
 
     // Chat
     socket.on("CHAT_SEND", validateAndHandle(socket, chatSendSchema, (data) =>
