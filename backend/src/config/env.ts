@@ -7,6 +7,7 @@ export const env = {
   SUPABASE_URL: process.env.SUPABASE_URL || "",
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
   SUPABASE_JWT_SECRET: process.env.SUPABASE_JWT_SECRET || "",
+  PASSWORD_RESET_REDIRECT_URL: process.env.PASSWORD_RESET_REDIRECT_URL || "",
 
   // Database
   DATABASE_URL: process.env.DATABASE_URL || "",
@@ -31,4 +32,3 @@ for (const envVar of requiredEnvVars) {
     throw new Error(`Missing required environment variable: ${envVar}`);
   }
 }
-
