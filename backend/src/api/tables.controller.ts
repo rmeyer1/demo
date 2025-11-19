@@ -186,4 +186,73 @@ export async function registerTableRoutes(app: FastifyInstance) {
       });
     }
   );
-*** End Patch
+
+  // Sit down
+  app.post(
+    "/:id/sit-down",
+    { preHandler: authenticate },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const req = request as AuthenticatedRequest;
+      const userId = req.userId;
+      const params = request.params as { id: string };
+      const body = sitDownSchema.parse(request.body);
+
+      try {
+        const result = await sitDown(params.id, userId, body.seatIndex, body.buyInAmount);
+
+        return reply.send({
+          tableId: result.tableId,
+          seatIndex: result.seatIndex,
+          userId: result.userId,
+          displayName: result.displayName,
+          stack: result.stack,
+          isSittingOut: result.isSittingOut,
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "UNKNOWN_ERROR";
+        const statusCode =
+          errorMessage === "INVALID_SEAT" || errorMessage === "SEAT_TAKEN" || errorMessage === "INVALID_BUYIN"
+            ? 400
+            : 500;
+
+        return reply.status(statusCode).send({
+          error: {
+            code: errorMessage,
+            message: errorMessage,
+          },
+        });
+      }
+    }
+  );
+
+  // Stand up
+  app.post(
+    "/:id/stand-up",
+    { preHandler: authenticate },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const req = request as AuthenticatedRequest;
+      const userId = req.userId;
+      const params = request.params as { id: string };
+
+      try {
+        const result = await standUp(params.id, userId);
+
+        return reply.send({
+          tableId: result.tableId,
+          seatIndex: result.seatIndex,
+          remainingStack: result.remainingStack,
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "UNKNOWN_ERROR";
+        const statusCode = errorMessage === "NOT_SEATED" ? 400 : 500;
+
+        return reply.status(statusCode).send({
+          error: {
+            code: errorMessage,
+            message: errorMessage,
+          },
+        });
+      }
+    }
+  );
+}
