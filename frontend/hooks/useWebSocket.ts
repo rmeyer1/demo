@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Socket } from "socket.io-client";
-import { getSocket, disconnectSocket } from "@/lib/wsClient";
+import { getSocket, disconnectSocket, refreshAndReconnect } from "@/lib/wsClient";
 
 export function useWebSocket(tableId?: string) {
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -15,29 +15,45 @@ export function useWebSocket(tableId?: string) {
     let mounted = true;
     let wsRef: Socket | null = null;
 
+    const attachHandlers = (ws: Socket) => {
+      ws.on("connect", () => {
+        setConnected(true);
+        setError(null);
+        if (tableId) {
+          ws.emit("JOIN_TABLE", { tableId });
+        }
+      });
+
+      ws.on("disconnect", () => {
+        setConnected(false);
+      });
+
+      ws.on("connect_error", async (err) => {
+        setError(err.message);
+        setConnected(false);
+
+        // Try to refresh session/token and reconnect when expired/invalid
+        if (err.message?.toUpperCase().includes("TOKEN_EXPIRED") || err.message?.toUpperCase().includes("INVALID_TOKEN")) {
+          try {
+            const newWs = await refreshAndReconnect();
+            if (!mounted) return;
+            wsRef = newWs;
+            setSocket(newWs);
+            attachHandlers(newWs);
+          } catch (refreshErr) {
+            setError(refreshErr instanceof Error ? refreshErr.message : "Failed to refresh session");
+          }
+        }
+      });
+    };
+
     const connect = async () => {
       try {
         const ws = await getSocket();
         wsRef = ws;
         if (!mounted) return;
 
-        ws.on("connect", () => {
-          setConnected(true);
-          setError(null);
-          if (tableId) {
-            ws.emit("JOIN_TABLE", { tableId });
-          }
-        });
-
-        ws.on("disconnect", () => {
-          setConnected(false);
-        });
-
-        ws.on("connect_error", (err) => {
-          setError(err.message);
-          setConnected(false);
-        });
-
+        attachHandlers(ws);
         setSocket(ws);
       } catch (err) {
         if (mounted) {
