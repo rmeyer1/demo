@@ -59,7 +59,7 @@ export function useWebSocket(tableId?: string) {
   }, [tableId]);
 
   const emit = useCallback(
-    (event: string, data?: any) => {
+    (event: string, data?: unknown) => {
       if (socket && connected) {
         socket.emit(event, data);
       }
@@ -68,7 +68,7 @@ export function useWebSocket(tableId?: string) {
   );
 
   const on = useCallback(
-    (event: string, handler: (...args: any[]) => void) => {
+    (event: string, handler: (...args: unknown[]) => void) => {
       if (socket) {
         socket.on(event, handler);
         return () => {

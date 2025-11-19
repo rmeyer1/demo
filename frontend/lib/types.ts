@@ -16,38 +16,62 @@ export interface Table {
   bigBlind: number;
   inviteCode: string;
   createdAt: string;
-  seats?: {
-    seatIndex: number;
-    userId: string | null;
-    displayName: string | null;
-    stack: number;
-    isSittingOut: boolean;
-  }[];
+  seats?: TableSeat[];
 }
 
-export interface TableState {
+export type SeatStatus = "ACTIVE" | "FOLDED" | "ALL_IN" | "SITTING_OUT";
+
+export type Street =
+  | "WAITING"
+  | "DEALING"
+  | "PREFLOP"
+  | "FLOP"
+  | "TURN"
+  | "RIVER"
+  | "SHOWDOWN"
+  | "COMPLETE";
+
+export interface TableSeat {
+  seatIndex: number;
+  userId: string | null;
+  displayName: string | null;
+  stack: number;
+  isSittingOut: boolean;
+}
+
+export interface PublicSeatView {
+  seatIndex: number;
+  displayName: string;
+  stack: number;
+  status: SeatStatus;
+  isSelf: boolean;
+}
+
+export interface PublicTableView {
   tableId: string;
-  handNumber: number;
-  currentStreet: "PREFLOP" | "FLOP" | "TURN" | "RIVER" | "SHOWDOWN";
+  seats: PublicSeatView[];
   communityCards: string[];
-  pot: number;
-  currentBet: number;
-  smallBlind: number;
-  bigBlind: number;
-  dealerPosition: number;
-  activePlayerPosition?: number;
-  players: PlayerState[];
+  potTotal: number;
+  street: Street | null;
+  toActSeatIndex?: number;
+  minBet?: number;
+  callAmount?: number;
+  handId?: string;
+  holeCards?: string[];
 }
 
-export interface PlayerState {
-  userId: string;
-  position: number;
-  chips: number;
-  bet: number;
-  isActive: boolean;
-  isAllIn: boolean;
-  hasActed: boolean;
-  holeCards?: string[];
+export interface HandResultEvent {
+  handId: string;
+  winners: Array<{
+    seatIndex: number;
+    handRank: string;
+    handDescription: string;
+    wonAmount: number;
+  }>;
+  finalStacks: Array<{
+    seatIndex: number;
+    stack: number;
+  }>;
 }
 
 export interface ChatMessage {
