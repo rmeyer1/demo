@@ -59,13 +59,14 @@ export default function LobbyPage() {
     }
 
     try {
+      const code = inviteCode.trim();
       const table = await apiClient.post<{ tableId: string; name: string; maxPlayers: number; status: string }>(
         "/api/tables/join-by-code",
-        { inviteCode: inviteCode.trim() }
+        { inviteCode: code }
       );
       setShowJoinModal(false);
       setInviteCode("");
-      router.push(`/table/${table.tableId}`);
+      router.push(`/table/${table.tableId}?inviteCode=${encodeURIComponent(code)}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to join table");
     }
