@@ -4,18 +4,18 @@ import { useState, useEffect, useCallback } from "react";
 import type { HandResultEvent, PublicTableView } from "@/lib/types";
 import { useWebSocket } from "./useWebSocket";
 
-export function useTableState(tableId: string) {
+export function useTableState(tableId: string, inviteCode?: string | null) {
   const [tableState, setTableState] = useState<PublicTableView | null>(null);
   const [handResult, setHandResult] = useState<HandResultEvent | null>(null);
-  const { socket, connected, on, emit } = useWebSocket(tableId);
+  const { socket, connected, on, emit } = useWebSocket(tableId, inviteCode);
 
   useEffect(() => {
     if (!socket || !connected) return;
 
-    const unsubscribeTableState = on("TABLE_STATE", (payload: unknown) => {
-      const parsed = payload as { state?: PublicTableView; tableId?: string } | PublicTableView;
-      const nextState = (parsed as { state?: PublicTableView }).state ?? (parsed as PublicTableView);
-      if (nextState) {
+    const unsubscribeTableState = on(
+      "TABLE_STATE",
+      (payload: { state?: PublicTableView; tableId: string }) => {
+        const nextState = payload.state ?? (payload as unknown as PublicTableView);
         setTableState(() => {
           // Clear stale hand results when a new hand arrives
           if (handResult && handResult.handId !== nextState.handId) {
@@ -24,45 +24,42 @@ export function useTableState(tableId: string) {
           return nextState;
         });
       }
-    });
+    );
 
-    const unsubscribeHandResult = on("HAND_RESULT", (payload: unknown) => {
-      const parsed = payload as {
-        handId?: string;
-        results?: HandResultEvent["winners"];
-        finalStacks?: HandResultEvent["finalStacks"];
-      };
-      if (!parsed.handId || !parsed.results || !parsed.finalStacks) return;
-
-      setHandResult({
-        handId: parsed.handId,
-        winners: parsed.results,
-        finalStacks: parsed.finalStacks,
-      });
-
-      // Update chip stacks eagerly so UI reflects results before next snapshot
-      setTableState((prev) => {
-        if (!prev) return prev;
-        const updatedSeats = prev.seats.map((seat) => {
-          const finalStack = parsed.finalStacks!.find((fs) => fs.seatIndex === seat.seatIndex);
-          return finalStack ? { ...seat, stack: finalStack.stack } : seat;
+    const unsubscribeHandResult = on(
+      "HAND_RESULT",
+      (payload: { handId: string; results: HandResultEvent["winners"]; finalStacks: HandResultEvent["finalStacks"] }) => {
+        setHandResult({
+          handId: payload.handId,
+          winners: payload.results,
+          finalStacks: payload.finalStacks,
         });
-        return { ...prev, seats: updatedSeats };
-      });
-    });
 
-    const unsubscribeHoleCards = on("HOLE_CARDS", (payload: unknown) => {
-      const parsed = payload as { tableId?: string; handId?: string; cards?: string[] };
-      if (!parsed.handId || !parsed.cards) return;
-      setTableState((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          handId: parsed.handId,
-          holeCards: parsed.cards,
-        };
-      });
-    });
+        // Update chip stacks eagerly so UI reflects results before next snapshot
+        setTableState((prev) => {
+          if (!prev) return prev;
+          const updatedSeats = prev.seats.map((seat) => {
+            const finalStack = payload.finalStacks.find((fs) => fs.seatIndex === seat.seatIndex);
+            return finalStack ? { ...seat, stack: finalStack.stack } : seat;
+          });
+          return { ...prev, seats: updatedSeats };
+        });
+      }
+    );
+
+    const unsubscribeHoleCards = on(
+      "HOLE_CARDS",
+      (payload: { tableId: string; handId: string; cards: string[] }) => {
+        setTableState((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            handId: payload.handId,
+            holeCards: payload.cards,
+          };
+        });
+      }
+    );
 
     return () => {
       unsubscribeTableState?.();

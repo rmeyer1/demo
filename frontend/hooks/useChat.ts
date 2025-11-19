@@ -5,9 +5,9 @@ import type { ChatMessage } from "@/lib/types";
 import { useWebSocket } from "./useWebSocket";
 import { apiClient } from "@/lib/apiClient";
 
-export function useChat(tableId: string) {
+export function useChat(tableId: string, inviteCode?: string | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const { socket, connected, emit, on } = useWebSocket(tableId);
+  const { socket, connected, emit, on } = useWebSocket(tableId, inviteCode);
 
   // Load chat history on mount
   useEffect(() => {

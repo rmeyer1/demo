@@ -22,9 +22,9 @@ export default function TablePage() {
   const tableId = params.id as string;
   const inviteCode = searchParams.get("inviteCode");
   const { user, loading: authLoading } = useAuth();
-  const { tableState, handResult, clearHandResult, connected } = useTableState(tableId);
-  const { messages, sendMessage, connected: chatConnected } = useChat(tableId);
-  const { emit } = useWebSocket(tableId);
+  const { tableState, handResult, clearHandResult, connected } = useTableState(tableId, inviteCode);
+  const { messages, sendMessage, connected: chatConnected } = useChat(tableId, inviteCode);
+  const { emit } = useWebSocket(tableId, inviteCode);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Persist invite code so reloads/reconnects keep access

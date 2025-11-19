@@ -27,11 +27,12 @@ async function handleJoinTable(
       return;
     }
 
-    // Check if user is allowed (host or has a seat)
+    // Check if user is allowed (host or has a seat or holds valid invite)
     const isHost = table.hostUserId === userId;
     const hasSeat = table.seats.some((s) => s.userId === userId);
+    const hasValidInvite = msg.inviteCode && msg.inviteCode === table.inviteCode;
 
-    if (!isHost && !hasSeat) {
+    if (!isHost && !hasSeat && !hasValidInvite) {
       sendError(socket, "NOT_IN_TABLE", "You are not a member of this table.");
       return;
     }

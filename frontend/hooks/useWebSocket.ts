@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Socket } from "socket.io-client";
 import { getSocket, disconnectSocket, refreshAndReconnect } from "@/lib/wsClient";
 
-export function useWebSocket(tableId?: string) {
+export function useWebSocket(tableId?: string, inviteCode?: string | null) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +20,7 @@ export function useWebSocket(tableId?: string) {
         setConnected(true);
         setError(null);
         if (tableId) {
-          ws.emit("JOIN_TABLE", { tableId });
+          ws.emit("JOIN_TABLE", { tableId, inviteCode });
         }
       });
 
@@ -72,7 +72,7 @@ export function useWebSocket(tableId?: string) {
       }
       disconnectSocket();
     };
-  }, [tableId]);
+  }, [tableId, inviteCode]);
 
   const emit = useCallback(
     (event: string, data?: unknown) => {
