@@ -21,16 +21,37 @@ export default function ResetConfirmPage() {
 
   useEffect(() => {
     const exchange = async () => {
-      if (!code) {
-        setError("Missing or invalid reset link.");
+      // Supabase recovery links arrive with tokens in the hash: #access_token=...&refresh_token=...&type=recovery
+      const hash = typeof window !== "undefined" ? window.location.hash : "";
+      const hashParams = new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash);
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+
+      if (accessToken && refreshToken) {
+        const { error: setErr } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (setErr) {
+          setError("This reset link is invalid or expired.");
+        } else {
+          setSessionReady(true);
+        }
         return;
       }
-      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-      if (exchangeError) {
-        setError("This reset link is invalid or expired.");
-      } else {
-        setSessionReady(true);
+
+      // Fallback: some flows may send ?code=...
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError) {
+          setError("This reset link is invalid or expired.");
+        } else {
+          setSessionReady(true);
+        }
+        return;
       }
+
+      setError("Missing or invalid reset link.");
     };
     exchange();
   }, [code]);
