@@ -12,10 +12,10 @@ export function useTableState(tableId: string) {
   useEffect(() => {
     if (!socket || !connected) return;
 
-    const unsubscribeTableState = on(
-      "TABLE_STATE",
-      (payload: { state?: PublicTableView; tableId: string }) => {
-        const nextState = payload.state ?? (payload as unknown as PublicTableView);
+    const unsubscribeTableState = on("TABLE_STATE", (payload: unknown) => {
+      const parsed = payload as { state?: PublicTableView; tableId?: string } | PublicTableView;
+      const nextState = (parsed as { state?: PublicTableView }).state ?? (parsed as PublicTableView);
+      if (nextState) {
         setTableState(() => {
           // Clear stale hand results when a new hand arrives
           if (handResult && handResult.handId !== nextState.handId) {
@@ -24,42 +24,45 @@ export function useTableState(tableId: string) {
           return nextState;
         });
       }
-    );
+    });
 
-    const unsubscribeHandResult = on(
-      "HAND_RESULT",
-      (payload: { handId: string; results: HandResultEvent["winners"]; finalStacks: HandResultEvent["finalStacks"] }) => {
-        setHandResult({
-          handId: payload.handId,
-          winners: payload.results,
-          finalStacks: payload.finalStacks,
-        });
+    const unsubscribeHandResult = on("HAND_RESULT", (payload: unknown) => {
+      const parsed = payload as {
+        handId?: string;
+        results?: HandResultEvent["winners"];
+        finalStacks?: HandResultEvent["finalStacks"];
+      };
+      if (!parsed.handId || !parsed.results || !parsed.finalStacks) return;
 
-        // Update chip stacks eagerly so UI reflects results before next snapshot
-        setTableState((prev) => {
-          if (!prev) return prev;
-          const updatedSeats = prev.seats.map((seat) => {
-            const finalStack = payload.finalStacks.find((fs) => fs.seatIndex === seat.seatIndex);
-            return finalStack ? { ...seat, stack: finalStack.stack } : seat;
-          });
-          return { ...prev, seats: updatedSeats };
-        });
-      }
-    );
+      setHandResult({
+        handId: parsed.handId,
+        winners: parsed.results,
+        finalStacks: parsed.finalStacks,
+      });
 
-    const unsubscribeHoleCards = on(
-      "HOLE_CARDS",
-      (payload: { tableId: string; handId: string; cards: string[] }) => {
-        setTableState((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            handId: payload.handId,
-            holeCards: payload.cards,
-          };
+      // Update chip stacks eagerly so UI reflects results before next snapshot
+      setTableState((prev) => {
+        if (!prev) return prev;
+        const updatedSeats = prev.seats.map((seat) => {
+          const finalStack = parsed.finalStacks!.find((fs) => fs.seatIndex === seat.seatIndex);
+          return finalStack ? { ...seat, stack: finalStack.stack } : seat;
         });
-      }
-    );
+        return { ...prev, seats: updatedSeats };
+      });
+    });
+
+    const unsubscribeHoleCards = on("HOLE_CARDS", (payload: unknown) => {
+      const parsed = payload as { tableId?: string; handId?: string; cards?: string[] };
+      if (!parsed.handId || !parsed.cards) return;
+      setTableState((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          handId: parsed.handId,
+          holeCards: parsed.cards,
+        };
+      });
+    });
 
     return () => {
       unsubscribeTableState?.();
