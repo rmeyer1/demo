@@ -31,7 +31,7 @@ export default function LoginPage() {
       } else {
         router.push("/lobby");
       }
-    } catch (err) {
+    } catch {
       setError("An unexpected error occurred");
     } finally {
       setLoading(false);
@@ -80,5 +80,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
-

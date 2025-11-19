@@ -3,14 +3,14 @@
 import { PlayerSeat } from "./PlayerSeat";
 import { CommunityCards } from "./CommunityCards";
 import { PotDisplay } from "./PotDisplay";
-import type { TableState } from "@/lib/types";
+import type { PublicTableView, Table } from "@/lib/types";
 
 interface PokerTableProps {
-  tableState: TableState;
-  currentUserId: string;
+  tableState: PublicTableView;
+  tableMeta: Table;
 }
 
-export function PokerTable({ tableState, currentUserId }: PokerTableProps) {
+export function PokerTable({ tableState, tableMeta }: PokerTableProps) {
   return (
     <div className="relative w-full max-w-4xl mx-auto aspect-[4/3]">
       {/* Table surface */}
@@ -18,20 +18,18 @@ export function PokerTable({ tableState, currentUserId }: PokerTableProps) {
         {/* Community cards and pot in center */}
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <CommunityCards cards={tableState.communityCards} />
-          <PotDisplay pot={tableState.pot} />
+          <PotDisplay potTotal={tableState.potTotal} />
         </div>
 
         {/* Player seats arranged in a circle */}
         <div className="absolute inset-0">
-          {tableState.players.map((player) => (
+          {tableState.seats.map((seat) => (
             <PlayerSeat
-              key={player.userId}
-              player={player}
-              position={player.position}
-              totalSeats={tableState.players.length}
-              isCurrentUser={player.userId === currentUserId}
-              isActive={player.position === tableState.activePlayerPosition}
-              isDealer={player.position === tableState.dealerPosition}
+              key={seat.seatIndex}
+              seat={seat}
+              position={seat.seatIndex}
+              totalSeats={tableMeta.maxPlayers}
+              isActive={tableState.toActSeatIndex === seat.seatIndex}
             />
           ))}
         </div>
@@ -39,5 +37,3 @@ export function PokerTable({ tableState, currentUserId }: PokerTableProps) {
     </div>
   );
 }
-
-

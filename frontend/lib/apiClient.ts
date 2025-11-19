@@ -38,11 +38,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   });
 
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  const data = text ? (JSON.parse(text) as unknown) : null;
 
   if (!res.ok) {
-    const code = data?.error?.code;
-    const message = data?.error?.message || res.statusText;
+    const errorPayload = data as { error?: { code?: string; message?: string } } | null;
+    const code = errorPayload?.error?.code;
+    const message = errorPayload?.error?.message || res.statusText;
     throw new ApiError(message, code, res.status);
   }
 
@@ -51,12 +52,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const apiClient = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body?: any) =>
+  post: <T>(path: string, body?: unknown) =>
     request<T>(path, {
       method: "POST",
       body: JSON.stringify(body || {}),
     }),
-  put: <T>(path: string, body?: any) =>
+  put: <T>(path: string, body?: unknown) =>
     request<T>(path, {
       method: "PUT",
       body: JSON.stringify(body || {}),

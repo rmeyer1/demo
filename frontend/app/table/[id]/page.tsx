@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
@@ -13,15 +13,17 @@ import { PokerTable } from "@/components/table/PokerTable";
 import { ActionControls } from "@/components/table/ActionControls";
 import { TableHud } from "@/components/table/TableHud";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { HandResultOverlay } from "@/components/table/HandResultOverlay";
 
 export default function TablePage() {
   const params = useParams();
   const router = useRouter();
   const tableId = params.id as string;
   const { user, loading: authLoading } = useAuth();
-  const { tableState, connected } = useTableState(tableId);
+  const { tableState, handResult, clearHandResult, connected } = useTableState(tableId);
   const { messages, sendMessage, connected: chatConnected } = useChat(tableId);
   const { emit } = useWebSocket(tableId);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const { data: table, isLoading } = useQuery({
     queryKey: ["table", tableId],
@@ -36,15 +38,51 @@ export default function TablePage() {
   }, [authLoading, user, router]);
 
   const handleAction = (
-    action: "fold" | "check" | "call" | "bet" | "raise",
+    action: "FOLD" | "CHECK" | "CALL" | "BET" | "RAISE",
     amount?: number
   ) => {
+    setActionError(null);
+    if (!tableState) return;
+
+    // Basic client-side validation to reduce server rejections
+    if (!tableState.handId) {
+      setActionError("Hand not active yet.");
+      return;
+    }
+
+    const selfSeat = tableState.seats.find((s) => s.isSelf);
+    if (!selfSeat || tableState.toActSeatIndex !== selfSeat.seatIndex) {
+      setActionError("Not your turn.");
+      return;
+    }
+
+    if (action === "CHECK" && (tableState.callAmount || 0) > 0) {
+      setActionError("Cannot check when facing a bet.");
+      return;
+    }
+
+    if (action === "CALL" && (tableState.callAmount || 0) === 0) {
+      setActionError("Nothing to call.");
+      return;
+    }
+
+    if ((action === "BET" || action === "RAISE") && (!amount || amount < (tableState.minBet || 0))) {
+      setActionError(`Bet/Raise must be at least ${tableState.minBet || 0}.`);
+      return;
+    }
+
     emit("PLAYER_ACTION", {
       tableId,
+      handId: tableState.handId,
       action,
       amount,
     });
   };
+
+  const mySeat = useMemo(
+    () => tableState?.seats.find((s) => s.isSelf),
+    [tableState]
+  );
 
   if (authLoading || isLoading) {
     return (
@@ -66,17 +104,19 @@ export default function TablePage() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <TableHud tableName={table.name} tableState={tableState} />
+      <TableHud tableName={table.name} tableMeta={table} tableState={tableState} />
 
       <div className="grid lg:grid-cols-4 gap-6">
         <div className="lg:col-span-3">
-          <PokerTable tableState={tableState} currentUserId={user.id} />
+          <PokerTable tableState={tableState} tableMeta={table} />
           <div className="mt-6">
             <ActionControls
               tableState={tableState}
-              currentUserId={user.id}
               onAction={handleAction}
             />
+            {actionError && (
+              <p className="text-red-400 text-sm mt-2 text-center">{actionError}</p>
+            )}
           </div>
         </div>
         <div className="lg:col-span-1">
@@ -87,8 +127,26 @@ export default function TablePage() {
           />
         </div>
       </div>
+
+      {handResult && (
+        <HandResultOverlay
+          result={handResult}
+          seats={tableState.seats}
+          onClose={clearHandResult}
+        />
+      )}
+
+      {!connected && (
+        <div className="mt-4 text-center text-amber-300 text-sm">
+          Reconnecting to table...
+        </div>
+      )}
+
+      {mySeat && tableState.toActSeatIndex === mySeat.seatIndex && (
+        <div className="mt-4 text-center text-emerald-300 text-sm">
+          Your turn to act.
+        </div>
+      )}
     </div>
   );
 }
-
-

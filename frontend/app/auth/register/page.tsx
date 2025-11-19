@@ -37,7 +37,7 @@ export default function RegisterPage() {
       } else {
         router.push("/lobby");
       }
-    } catch (err) {
+    } catch {
       setError("An unexpected error occurred");
     } finally {
       setLoading(false);
@@ -95,5 +95,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-
-
