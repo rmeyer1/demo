@@ -7,6 +7,7 @@ const uuid = () =>
 
 export const joinTableSchema = z.object({
   tableId: uuid(),
+  inviteCode: z.string().optional(),
 });
 
 export const leaveTableSchema = z.object({

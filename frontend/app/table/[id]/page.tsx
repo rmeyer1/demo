@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useTableState } from "@/hooks/useTableState";
@@ -18,16 +18,33 @@ import { HandResultOverlay } from "@/components/table/HandResultOverlay";
 export default function TablePage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const tableId = params.id as string;
+  const inviteCode = searchParams.get("inviteCode");
   const { user, loading: authLoading } = useAuth();
-  const { tableState, handResult, clearHandResult, connected } = useTableState(tableId);
-  const { messages, sendMessage, connected: chatConnected } = useChat(tableId);
-  const { emit } = useWebSocket(tableId);
+  const storedInvite = typeof window !== "undefined" && tableId
+    ? localStorage.getItem(`tableInvite:${tableId}`)
+    : null;
+  const effectiveInvite = inviteCode || storedInvite || null;
+
+  const { tableState, handResult, clearHandResult, connected } = useTableState(tableId, effectiveInvite);
+  const { messages, sendMessage, connected: chatConnected } = useChat(tableId, effectiveInvite);
+  const { emit } = useWebSocket(tableId, effectiveInvite);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // Persist invite code so reloads/reconnects keep access
+  useEffect(() => {
+    if (inviteCode && tableId) {
+      localStorage.setItem(`tableInvite:${tableId}`, inviteCode);
+    }
+  }, [inviteCode, tableId]);
+
   const { data: table, isLoading } = useQuery({
-    queryKey: ["table", tableId],
-    queryFn: () => apiClient.get<Table>(`/api/tables/${tableId}`),
+    queryKey: ["table", tableId, effectiveInvite],
+    queryFn: () =>
+      apiClient.get<Table>(
+        `/api/tables/${tableId}${effectiveInvite ? `?inviteCode=${encodeURIComponent(effectiveInvite)}` : ""}`
+      ),
     enabled: !!tableId && !!user,
   });
 

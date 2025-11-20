@@ -86,6 +86,7 @@ export async function registerTableRoutes(app: FastifyInstance) {
       const req = request as AuthenticatedRequest;
       const userId = req.userId;
       const params = request.params as { id: string };
+      const query = request.query as { inviteCode?: string };
       const table = await getTableById(params.id);
 
       if (!table) {
@@ -99,7 +100,9 @@ export async function registerTableRoutes(app: FastifyInstance) {
 
       const isHost = table.hostUserId === userId;
       const isMember = table.seats.some((s) => s.userId === userId);
-      if (!isHost && !isMember) {
+      const hasValidInvite = query.inviteCode && query.inviteCode === table.inviteCode;
+
+      if (!isHost && !isMember && !hasValidInvite) {
         return reply.status(403).send({
           error: {
             code: "NOT_IN_TABLE",
