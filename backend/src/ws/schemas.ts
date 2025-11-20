@@ -26,7 +26,7 @@ export const standUpSchema = z.object({
 
 export const playerActionSchema = z.object({
   tableId: uuid(),
-  handId: uuid(),
+  handId: z.string().min(1),
   action: z.enum(["FOLD", "CHECK", "CALL", "BET", "RAISE", "ALL_IN"]),
   amount: z.number().int().nonnegative().optional(),
 });

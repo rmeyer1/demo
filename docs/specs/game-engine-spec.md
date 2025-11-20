@@ -29,6 +29,7 @@ The Game Engine is server-authoritative:
   - Empty (no user).
   - Occupied by a player with a current **chip stack**.
 - Only seated players with chips can participate in hands.
+- Seats flagged **SITTING_OUT** are skipped for button movement and cannot join a hand until their status returns to `ACTIVE` before the deal.
 
 ### 1.3 Blinds & Positions
 
@@ -63,6 +64,13 @@ Each hand passes through these phases:
 8. **Hand Completion & Next Hand**
 
 The engine must enforce that transitions occur in this order and only when betting conditions are satisfied.
+
+### 2.1 Table start eligibility (host-triggered)
+
+* A hand may start only when **at least two seats** have `userId`, `stack > 0`, and are **not sitting out**.
+* The hosting layer (WS) is responsible for enforcing host-only start, but the engine still throws `NOT_ENOUGH_PLAYERS` if this precondition fails.
+* The generated `handId` is an **opaque string** (not required to be a UUID); downstream contracts must treat it as a pass-through identifier.
+* Seats taking part in a hand are immutable for that hand: standing up mid-hand is disallowed; removing a seat mid-hand would invalidate pots/turn order.
 
 ---
 
@@ -296,4 +304,3 @@ The engine must always maintain:
 For implementation details and the engine interface, see:
 `/docs/specs/game-engine-spec.md`.
 ```
-

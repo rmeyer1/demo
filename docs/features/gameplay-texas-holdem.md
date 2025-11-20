@@ -452,6 +452,18 @@ Engine implementations **must** maintain:
 
 ---
 
+## 7. Seat Controls (UI/UX)
+
+### Stand Up control
+
+- A seated player sees a **Stand Up** button on their seat card (same slot as “Sit Here” for empty seats).
+- **Enabled only when** **no hand is active**. During an active hand (even if the player has folded), the button stays disabled with inline hint “Available after this hand.”
+- **Styling**: reuse the shared `Button` component (solid accent bg, subtle hover/press, disabled reduced opacity) to match other table controls.
+- **Placement**: desktop—below chip/status rows; mobile—full-width row within the seat card with ≥44px height for touch targets.
+- **Behavior**: on click, emit `STAND_UP`; surface errors inline on the seat card (e.g., `HAND_IN_PROGRESS`).
+
+---
+
 ## 8. Testing Requirements
 
 Agents must write unit tests covering:
@@ -469,4 +481,3 @@ See `/docs/testing/engine-test-plan.md` for detailed scenarios.
 
 This spec is the **source of truth** for engine behavior.
 The frontend, WebSocket protocol, and REST API layers must all align with these models and invariants.
-
