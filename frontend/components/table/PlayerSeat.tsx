@@ -7,6 +7,9 @@ interface PlayerSeatProps {
   position: number;
   totalSeats: number;
   isActive: boolean;
+  isVacant: boolean;
+  canSelectSeat?: boolean;
+  onSelectSeat?: (seatIndex: number) => void;
 }
 
 export function PlayerSeat({
@@ -14,6 +17,9 @@ export function PlayerSeat({
   position,
   totalSeats,
   isActive,
+  isVacant,
+  canSelectSeat,
+  onSelectSeat,
 }: PlayerSeatProps) {
   // Calculate position around the table (circular layout)
   const angle = (position / totalSeats) * 2 * Math.PI - Math.PI / 2;
@@ -30,7 +36,7 @@ export function PlayerSeat({
       }}
     >
       <div
-        className={`p-3 rounded-lg border-2 min-w-[120px] ${
+        className={`p-3 rounded-lg border-2 min-w-[140px] ${
           seat.isSelf
             ? "bg-emerald-800 border-emerald-500"
             : "bg-slate-800 border-slate-600"
@@ -51,6 +57,15 @@ export function PlayerSeat({
         )}
         {seat.isSelf && seat.status === "ACTIVE" && (
           <div className="text-xs text-emerald-200">You</div>
+        )}
+        {isVacant && canSelectSeat && !seat.isSelf && (
+          <button
+            className="mt-2 w-full rounded-md border border-emerald-400 bg-emerald-900/60 px-2 py-1 text-xs font-semibold text-emerald-200 hover:bg-emerald-800/80"
+            onClick={() => onSelectSeat?.(seat.seatIndex)}
+            type="button"
+          >
+            Sit Here
+          </button>
         )}
       </div>
     </div>
