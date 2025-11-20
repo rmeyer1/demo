@@ -10,6 +10,11 @@ interface PlayerSeatProps {
   isVacant: boolean;
   canSelectSeat?: boolean;
   onSelectSeat?: (seatIndex: number) => void;
+  startControl?: {
+    pending: boolean;
+    error?: string | null;
+    onStart: () => void;
+  };
 }
 
 export function PlayerSeat({
@@ -20,6 +25,7 @@ export function PlayerSeat({
   isVacant,
   canSelectSeat,
   onSelectSeat,
+  startControl,
 }: PlayerSeatProps) {
   // Calculate position around the table (circular layout)
   const angle = (position / totalSeats) * 2 * Math.PI - Math.PI / 2;
@@ -66,6 +72,21 @@ export function PlayerSeat({
           >
             Sit Here
           </button>
+        )}
+        {startControl && (
+          <div className="mt-2">
+            <button
+              className="w-full rounded-md border border-red-500 bg-red-900/70 px-2 py-1 text-xs font-semibold text-red-100 hover:bg-red-800 disabled:opacity-60 disabled:cursor-not-allowed"
+              onClick={startControl.onStart}
+              type="button"
+              disabled={startControl.pending}
+            >
+              {startControl.pending ? "Starting..." : "Start"}
+            </button>
+            {startControl.error && (
+              <p className="mt-1 text-xs text-red-200">{startControl.error}</p>
+            )}
+          </div>
         )}
       </div>
     </div>

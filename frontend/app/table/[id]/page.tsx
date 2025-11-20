@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useTableState } from "@/hooks/useTableState";
 import { useChat } from "@/hooks/useChat";
-import { useWebSocket } from "@/hooks/useWebSocket";
 import { apiClient, ApiError } from "@/lib/apiClient";
 import type { Table } from "@/lib/types";
 import { PokerTable } from "@/components/table/PokerTable";
@@ -31,14 +30,23 @@ export default function TablePage() {
     : null;
   const effectiveInvite = inviteCode || storedInvite || null;
 
-  const { tableState, handResult, clearHandResult, connected } = useTableState(tableId, effectiveInvite);
+  const { tableState, handResult, clearHandResult, connected, startGame, emit, on } = useTableState(
+    tableId,
+    effectiveInvite
+  );
   const { messages, sendMessage, connected: chatConnected } = useChat(tableId, effectiveInvite);
-  const { emit } = useWebSocket(tableId, effectiveInvite);
   const [actionError, setActionError] = useState<string | null>(null);
   const [seatPrompt, setSeatPrompt] = useState<{ seatIndex: number } | null>(null);
   const [buyInAmount, setBuyInAmount] = useState("");
   const [seatError, setSeatError] = useState<string | null>(null);
   const [seatSubmitting, setSeatSubmitting] = useState(false);
+  const [startPending, setStartPending] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  const startPendingRef = useRef(false);
+
+  useEffect(() => {
+    startPendingRef.current = startPending;
+  }, [startPending]);
 
   // Persist invite code so reloads/reconnects keep access
   useEffect(() => {
@@ -46,6 +54,28 @@ export default function TablePage() {
       localStorage.setItem(`tableInvite:${tableId}`, inviteCode);
     }
   }, [inviteCode, tableId]);
+
+  useEffect(() => {
+    if (!on) return;
+
+    const unsubscribe = on("ERROR", (...args: unknown[]) => {
+      const payload = (args[0] || {}) as { code?: string; message?: string };
+      const code = payload.code || "";
+      const isStartRelated =
+        code === "NOT_TABLE_HOST" ||
+        code.startsWith("GAME_START") ||
+        code === "TABLE_STATE_NOT_FOUND";
+
+      if (startPendingRef.current && isStartRelated) {
+        setStartError(payload.message || "Failed to start game.");
+        setStartPending(false);
+      }
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, [on]);
 
   const { data: table, isLoading } = useQuery({
     queryKey: ["table", tableId, effectiveInvite],
@@ -109,6 +139,65 @@ export default function TablePage() {
     [tableState]
   );
 
+  const mySeat = useMemo(
+    () => tableState?.seats.find((s) => s.isSelf),
+    [tableState]
+  );
+
+  const activePlayers = useMemo(
+    () =>
+      tableState
+        ? tableState.seats.filter(
+            (seat) => seat.stack > 0 && seat.status !== "SITTING_OUT"
+          )
+        : [],
+    [tableState]
+  );
+
+  const isHost = useMemo(
+    () => Boolean(table && user && user.id === table.hostUserId),
+    [table, user]
+  );
+
+  const canHostStart = useMemo(() => {
+    if (!tableState || !isHost || !mySeat) return false;
+    const hostReady = mySeat.stack > 0 && mySeat.status !== "SITTING_OUT";
+    const hasPartner = activePlayers.some((p) => p.seatIndex !== mySeat.seatIndex);
+    return hostReady && hasPartner && !tableState.handId;
+  }, [tableState, isHost, mySeat, activePlayers]);
+
+  useEffect(() => {
+    if (startPendingRef.current && tableState) {
+      setStartPending(false);
+    }
+  }, [tableState]);
+
+  useEffect(() => {
+    if ((tableState?.handId && startError) || (!canHostStart && startError)) {
+      setStartError(null);
+    }
+  }, [tableState?.handId, canHostStart, startError]);
+
+  const handleStartGame = useCallback(() => {
+    if (!canHostStart || startPendingRef.current) return;
+    setStartError(null);
+    setStartPending(true);
+    startGame();
+  }, [canHostStart, startGame]);
+
+  const startControl = useMemo(
+    () =>
+      mySeat && canHostStart
+        ? {
+            seatIndex: mySeat.seatIndex,
+            pending: startPending,
+            error: startError,
+            onStart: handleStartGame,
+          }
+        : null,
+    [mySeat, canHostStart, startPending, startError, handleStartGame]
+  );
+
   const handleSeatSelect = (seatIndex: number) => {
     if (isSeated || !table) return;
     if (!buyInAmount) {
@@ -150,12 +239,6 @@ export default function TablePage() {
       setSeatSubmitting(false);
     }
   };
-
-  const mySeat = useMemo(
-    () => tableState?.seats.find((s) => s.isSelf),
-    [tableState]
-  );
-
   if (authLoading || isLoading) {
     return (
       <div className="text-center text-slate-400 py-12">Loading table...</div>
@@ -185,6 +268,7 @@ export default function TablePage() {
             tableMeta={table}
             canSelectSeat={!isSeated}
             onSeatSelect={handleSeatSelect}
+            startControl={startControl || undefined}
           />
           <div className="mt-6">
             <ActionControls

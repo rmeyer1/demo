@@ -9,6 +9,13 @@ This document defines the **strict TypeScript contract** for the **Texas Hold'em
 
 Agents implementing the engine **must** conform to these interfaces and invariants.
 
+### Host-driven game start (UI)
+
+- The table does not auto-start when only two players are present; the host can manually trigger the first hand.
+- When the host is seated with chips, at least one other non-sitting-out player is seated with chips, and no hand is active, the host sees a red **Start** button on their seat card (replaces the "Sit Here" CTA slot).
+- Clicking **Start** emits `GAME_START`; the button disables while the request is in-flight and re-enables once the next `TABLE_STATE` arrives or an error is returned over the `ERROR` channel.
+- If conditions drop below two ready players or a hand is running, the Start button disappears.
+
 ---
 
 ## 1. Design Goals
@@ -469,4 +476,3 @@ See `/docs/testing/engine-test-plan.md` for detailed scenarios.
 
 This spec is the **source of truth** for engine behavior.
 The frontend, WebSocket protocol, and REST API layers must all align with these models and invariants.
-

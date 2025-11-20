@@ -6,14 +6,28 @@ import { CommunityCards } from "./CommunityCards";
 import { PotDisplay } from "./PotDisplay";
 import type { PublicTableView, Table } from "@/lib/types";
 
+interface StartControl {
+  seatIndex: number;
+  pending: boolean;
+  error?: string | null;
+  onStart: () => void;
+}
+
 interface PokerTableProps {
   tableState: PublicTableView;
   tableMeta: Table;
   canSelectSeat?: boolean;
   onSeatSelect?: (seatIndex: number) => void;
+  startControl?: StartControl | null;
 }
 
-export function PokerTable({ tableState, tableMeta, canSelectSeat = false, onSeatSelect }: PokerTableProps) {
+export function PokerTable({
+  tableState,
+  tableMeta,
+  canSelectSeat = false,
+  onSeatSelect,
+  startControl,
+}: PokerTableProps) {
   const occupancy = useMemo(() => {
     const map = new Map<number, boolean>();
     (tableMeta.seats || []).forEach((seat) => {
@@ -36,6 +50,10 @@ export function PokerTable({ tableState, tableMeta, canSelectSeat = false, onSea
         <div className="absolute inset-0">
           {tableState.seats.map((seat) => {
             const isVacant = !(occupancy.get(seat.seatIndex) ?? true);
+            const seatStartControl =
+              startControl && startControl.seatIndex === seat.seatIndex
+                ? startControl
+                : undefined;
             return (
               <PlayerSeat
                 key={seat.seatIndex}
@@ -46,6 +64,7 @@ export function PokerTable({ tableState, tableMeta, canSelectSeat = false, onSea
                 isVacant={isVacant}
                 canSelectSeat={canSelectSeat}
                 onSelectSeat={onSeatSelect}
+                startControl={seatStartControl}
               />
             );
           })}

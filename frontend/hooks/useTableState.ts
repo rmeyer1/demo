@@ -78,5 +78,13 @@ export function useTableState(tableId: string, inviteCode?: string | null) {
     }
   }, [connected, emit, tableId]);
 
-  return { tableState, handResult, clearHandResult: () => setHandResult(null), connected, startGame };
+  return {
+    tableState,
+    handResult,
+    clearHandResult: () => setHandResult(null),
+    connected,
+    startGame,
+    emit,
+    on,
+  };
 }
