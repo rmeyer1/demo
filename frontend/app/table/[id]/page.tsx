@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useTableState } from "@/hooks/useTableState";
 import { useChat } from "@/hooks/useChat";
-import { apiClient, ApiError } from "@/lib/apiClient";
+import { apiClient } from "@/lib/apiClient";
 import type { Table } from "@/lib/types";
 import { PokerTable } from "@/components/table/PokerTable";
 import { ActionControls } from "@/components/table/ActionControls";
@@ -20,7 +20,6 @@ import { Button } from "@/components/ui/Button";
 export default function TablePage() {
   const params = useParams();
   const router = useRouter();
-  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const tableId = params.id as string;
   const inviteCode = searchParams.get("inviteCode");
@@ -42,11 +41,6 @@ export default function TablePage() {
   const [seatSubmitting, setSeatSubmitting] = useState(false);
   const [startPending, setStartPending] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
-  const startPendingRef = useRef(false);
-
-  useEffect(() => {
-    startPendingRef.current = startPending;
-  }, [startPending]);
 
   // Persist invite code so reloads/reconnects keep access
   useEffect(() => {
@@ -76,6 +70,33 @@ export default function TablePage() {
       unsubscribe?.();
     };
   }, [on]);
+
+  useEffect(() => {
+    if (!on) return;
+
+    const unsubscribe = on("ERROR", (...args: unknown[]) => {
+      const payload = (args[0] || {}) as { code?: string; message?: string };
+      const code = payload.code || "";
+      const message = payload.message || "Action failed.";
+
+      const seatCodes = ["INVALID_SEAT", "SEAT_TAKEN", "INVALID_BUYIN", "NOT_IN_TABLE"];
+      const startCodes = ["NOT_TABLE_HOST", "TABLE_STATE_NOT_FOUND"];
+
+      if (startPending && (startCodes.includes(code) || code.startsWith("GAME_START"))) {
+        setStartError(message);
+        setStartPending(false);
+      }
+
+      if (seatSubmitting && seatCodes.includes(code)) {
+        setSeatError(message);
+        setSeatSubmitting(false);
+      }
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, [on, startPending, seatSubmitting]);
 
   const { data: table, isLoading } = useQuery({
     queryKey: ["table", tableId, effectiveInvite],
@@ -167,23 +188,39 @@ export default function TablePage() {
   }, [tableState, isHost, mySeat, activePlayers]);
 
   useEffect(() => {
-    if (startPendingRef.current && tableState) {
+    if (startPending && tableState) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStartPending(false);
     }
-  }, [tableState]);
+  }, [tableState, startPending]);
+
+  useEffect(() => {
+    if (
+      seatSubmitting &&
+      tableState?.seats.some((s) => s.isSelf && s.stack > 0)
+    ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSeatSubmitting(false);
+      setSeatPrompt(null);
+      setBuyInAmount("");
+      setSeatPrompt(null);
+      setBuyInAmount("");
+    }
+  }, [tableState, seatSubmitting]);
 
   useEffect(() => {
     if ((tableState?.handId && startError) || (!canHostStart && startError)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStartError(null);
     }
   }, [tableState?.handId, canHostStart, startError]);
 
   const handleStartGame = useCallback(() => {
-    if (!canHostStart || startPendingRef.current) return;
+    if (!canHostStart || startPending) return;
     setStartError(null);
     setStartPending(true);
     startGame();
-  }, [canHostStart, startGame]);
+  }, [canHostStart, startGame, startPending]);
 
   const startControl = useMemo(
     () =>
@@ -253,20 +290,12 @@ export default function TablePage() {
 
     setSeatSubmitting(true);
     setSeatError(null);
-    try {
-      await apiClient.post(`/api/tables/${tableId}/sit-down`, {
-        seatIndex: seatPrompt.seatIndex,
-        buyInAmount: amount,
-      });
-      await queryClient.invalidateQueries({ queryKey: ["table", tableId, effectiveInvite] });
-      setSeatPrompt(null);
-      setBuyInAmount("");
-    } catch (error) {
-      const message = error instanceof ApiError ? error.message : "Failed to take seat.";
-      setSeatError(message);
-    } finally {
-      setSeatSubmitting(false);
-    }
+
+    emit("SIT_DOWN", {
+      tableId,
+      seatIndex: seatPrompt.seatIndex,
+      buyInAmount: amount,
+    });
   };
   if (authLoading || isLoading) {
     return (
