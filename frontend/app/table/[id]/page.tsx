@@ -22,9 +22,14 @@ export default function TablePage() {
   const tableId = params.id as string;
   const inviteCode = searchParams.get("inviteCode");
   const { user, loading: authLoading } = useAuth();
-  const { tableState, handResult, clearHandResult, connected } = useTableState(tableId, inviteCode);
-  const { messages, sendMessage, connected: chatConnected } = useChat(tableId, inviteCode);
-  const { emit } = useWebSocket(tableId, inviteCode);
+  const storedInvite = typeof window !== "undefined" && tableId
+    ? localStorage.getItem(`tableInvite:${tableId}`)
+    : null;
+  const effectiveInvite = inviteCode || storedInvite || null;
+
+  const { tableState, handResult, clearHandResult, connected } = useTableState(tableId, effectiveInvite);
+  const { messages, sendMessage, connected: chatConnected } = useChat(tableId, effectiveInvite);
+  const { emit } = useWebSocket(tableId, effectiveInvite);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Persist invite code so reloads/reconnects keep access
@@ -33,11 +38,6 @@ export default function TablePage() {
       localStorage.setItem(`tableInvite:${tableId}`, inviteCode);
     }
   }, [inviteCode, tableId]);
-
-  const storedInvite = typeof window !== "undefined" && tableId
-    ? localStorage.getItem(`tableInvite:${tableId}`)
-    : null;
-  const effectiveInvite = inviteCode || storedInvite || null;
 
   const { data: table, isLoading } = useQuery({
     queryKey: ["table", tableId, effectiveInvite],
@@ -95,6 +95,11 @@ export default function TablePage() {
       amount,
     });
   };
+
+  const mySeat = useMemo(
+    () => tableState?.seats.find((s) => s.isSelf),
+    [tableState]
+  );
 
   if (authLoading || isLoading) {
     return (
@@ -154,12 +159,11 @@ export default function TablePage() {
         </div>
       )}
 
-      {tableState.seats.find((s) => s.isSelf) &&
-        tableState.toActSeatIndex === tableState.seats.find((s) => s.isSelf)?.seatIndex && (
-          <div className="mt-4 text-center text-emerald-300 text-sm">
-            Your turn to act.
-          </div>
-        )}
+      {mySeat && tableState.toActSeatIndex === mySeat.seatIndex && (
+        <div className="mt-4 text-center text-emerald-300 text-sm">
+          Your turn to act.
+        </div>
+      )}
     </div>
   );
 }
