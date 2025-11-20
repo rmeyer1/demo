@@ -20,10 +20,9 @@ export async function getSocket(forceNew = false): Promise<Socket> {
   }
 
   const tokenChanged = token !== currentToken;
-  const needsNew = forceNew || tokenChanged || !socket || !socket.connected;
 
-  if (needsNew) {
-    // tear down previous socket before creating a new one
+  // Replace the socket only when forced or when auth token changed.
+  if (!socket || forceNew || tokenChanged) {
     if (socket) {
       socket.disconnect();
     }
@@ -35,9 +34,16 @@ export async function getSocket(forceNew = false): Promise<Socket> {
       reconnectionAttempts: 5,
     });
     currentToken = token;
+    return socket;
   }
 
-  return socket!;
+  // If an existing socket instance is temporarily disconnected, try to reconnect
+  // instead of tearing it down so multiple hooks can share it safely.
+  if (socket.disconnected) {
+    socket.connect();
+  }
+
+  return socket;
 }
 
 export async function refreshAndReconnect(): Promise<Socket> {
