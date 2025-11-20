@@ -2,7 +2,7 @@ import { Server, Socket } from "socket.io";
 import { ErrorMessage } from "./types";
 import { getTableById } from "../services/table.service";
 import { sitDown, standUp } from "../services/table.service";
-import { applyPlayerAction, getPublicTableView } from "../services/game.service";
+import { applyPlayerAction, getPublicTableView, ensureTableState } from "../services/game.service";
 import { logger } from "../config/logger";
 import {
   JoinTableInput,
@@ -12,6 +12,7 @@ import {
   StandUpInput,
 } from "./schemas";
 import { checkRateLimit } from "../utils/rateLimiter";
+import { deleteTableStateFromRedis } from "../services/table.service";
 
 async function handleJoinTable(
   io: Server,
@@ -76,6 +77,10 @@ async function handleSitDown(
   try {
     const result = await sitDown(msg.tableId, userId, msg.seatIndex, msg.buyInAmount);
 
+    // Refresh cached table state so seat changes are reflected in engine/public views
+    await deleteTableStateFromRedis(msg.tableId);
+    await ensureTableState(msg.tableId);
+
     // Broadcast updated table state to all in the room
     const tableView = await getPublicTableView(msg.tableId, userId);
     io.to(`table:${msg.tableId}`).emit("TABLE_STATE", {
@@ -96,6 +101,9 @@ async function handleStandUp(
 ): Promise<void> {
   try {
     await standUp(msg.tableId, userId);
+
+    await deleteTableStateFromRedis(msg.tableId);
+    await ensureTableState(msg.tableId);
 
     // Broadcast updated table state
     const tableView = await getPublicTableView(msg.tableId, userId);

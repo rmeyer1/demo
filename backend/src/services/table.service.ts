@@ -243,6 +243,9 @@ export async function sitDown(
     },
   });
 
+  // Seating changes must invalidate cached engine state so fresh seats are used
+  await deleteTableStateFromRedis(tableId);
+
   return {
     tableId,
     seatIndex,
@@ -274,6 +277,8 @@ export async function standUp(tableId: string, userId: string) {
       stack: 0,
     },
   });
+
+  await deleteTableStateFromRedis(tableId);
 
   return {
     tableId,
