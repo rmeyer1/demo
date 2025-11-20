@@ -198,6 +198,35 @@ export default function TablePage() {
     [mySeat, canHostStart, startPending, startError, handleStartGame]
   );
 
+  const startDebugReasons = useMemo(() => {
+    const reasons: string[] = [];
+    if (!tableState) {
+      reasons.push("Waiting for table state");
+      return reasons;
+    }
+    if (!isHost) {
+      reasons.push("Current user is not the host for this table.");
+    }
+    if (!mySeat) {
+      reasons.push("You must be seated to start a game.");
+    } else {
+      if (mySeat.stack <= 0) {
+        reasons.push("Host must have chips > 0.");
+      }
+      if (mySeat.status === "SITTING_OUT") {
+        reasons.push("Host cannot be sitting out.");
+      }
+    }
+    const readyOthers = activePlayers.filter((p) => p.seatIndex !== mySeat?.seatIndex && p.stack > 0);
+    if (readyOthers.length < 1) {
+      reasons.push("Need at least one other seated player with chips who is not sitting out.");
+    }
+    if (tableState.handId) {
+      reasons.push("A hand is already running.");
+    }
+    return reasons;
+  }, [tableState, isHost, mySeat, activePlayers]);
+
   const handleSeatSelect = (seatIndex: number) => {
     if (isSeated || !table) return;
     if (!buyInAmount) {
@@ -277,6 +306,16 @@ export default function TablePage() {
             />
             {actionError && (
               <p className="text-red-400 text-sm mt-2 text-center">{actionError}</p>
+            )}
+            {startDebugReasons.length > 0 && (
+              <div className="mt-4 rounded-md border border-slate-700 bg-slate-900/70 p-3 text-xs text-slate-200">
+                <div className="font-semibold text-slate-100 mb-1">Start button status</div>
+                <ul className="list-disc list-inside space-y-1">
+                  {startDebugReasons.map((reason) => (
+                    <li key={reason}>{reason}</li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
         </div>
