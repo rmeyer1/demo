@@ -206,6 +206,25 @@ export async function sitDown(
   seatIndex: number,
   buyInAmount: number
 ) {
+  // Guardrails: one seat per user, one table at a time (MVP)
+  const existingSeat = await prisma.seat.findFirst({
+    where: {
+      userId,
+    },
+    select: {
+      id: true,
+      tableId: true,
+      seatIndex: true,
+    },
+  });
+
+  if (existingSeat) {
+    if (existingSeat.tableId === tableId) {
+      throw new Error("ALREADY_SEATED");
+    }
+    throw new Error("IN_ANOTHER_TABLE");
+  }
+
   // Check if seat is available
   const seat = await prisma.seat.findFirst({
     where: {
