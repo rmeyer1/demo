@@ -2,22 +2,26 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useTableState } from "@/hooks/useTableState";
 import { useChat } from "@/hooks/useChat";
 import { useWebSocket } from "@/hooks/useWebSocket";
-import { apiClient } from "@/lib/apiClient";
+import { apiClient, ApiError } from "@/lib/apiClient";
 import type { Table } from "@/lib/types";
 import { PokerTable } from "@/components/table/PokerTable";
 import { ActionControls } from "@/components/table/ActionControls";
 import { TableHud } from "@/components/table/TableHud";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { HandResultOverlay } from "@/components/table/HandResultOverlay";
+import { Modal } from "@/components/ui/Modal";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 
 export default function TablePage() {
   const params = useParams();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const tableId = params.id as string;
   const inviteCode = searchParams.get("inviteCode");
@@ -31,6 +35,10 @@ export default function TablePage() {
   const { messages, sendMessage, connected: chatConnected } = useChat(tableId, effectiveInvite);
   const { emit } = useWebSocket(tableId, effectiveInvite);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [seatPrompt, setSeatPrompt] = useState<{ seatIndex: number } | null>(null);
+  const [buyInAmount, setBuyInAmount] = useState("");
+  const [seatError, setSeatError] = useState<string | null>(null);
+  const [seatSubmitting, setSeatSubmitting] = useState(false);
 
   // Persist invite code so reloads/reconnects keep access
   useEffect(() => {
@@ -96,6 +104,53 @@ export default function TablePage() {
     });
   };
 
+  const isSeated = useMemo(
+    () => tableState?.seats.some((s) => s.isSelf) ?? false,
+    [tableState]
+  );
+
+  const handleSeatSelect = (seatIndex: number) => {
+    if (isSeated || !table) return;
+    if (!buyInAmount) {
+      const defaultBuyIn = Math.max(table.bigBlind * 20, table.bigBlind * 2);
+      setBuyInAmount(String(defaultBuyIn));
+    }
+    setSeatPrompt({ seatIndex });
+    setSeatError(null);
+  };
+
+  const closeSeatPrompt = () => {
+    if (seatSubmitting) return;
+    setSeatPrompt(null);
+    setSeatError(null);
+  };
+
+  const confirmSeatSelection = async () => {
+    if (!seatPrompt) return;
+    const amount = Number(buyInAmount);
+    if (!amount || Number.isNaN(amount) || amount <= 0) {
+      setSeatError("Enter a buy-in greater than zero.");
+      return;
+    }
+
+    setSeatSubmitting(true);
+    setSeatError(null);
+    try {
+      await apiClient.post(`/api/tables/${tableId}/sit-down`, {
+        seatIndex: seatPrompt.seatIndex,
+        buyInAmount: amount,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["table", tableId, effectiveInvite] });
+      setSeatPrompt(null);
+      setBuyInAmount("");
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Failed to take seat.";
+      setSeatError(message);
+    } finally {
+      setSeatSubmitting(false);
+    }
+  };
+
   const mySeat = useMemo(
     () => tableState?.seats.find((s) => s.isSelf),
     [tableState]
@@ -125,7 +180,12 @@ export default function TablePage() {
 
       <div className="grid lg:grid-cols-4 gap-6">
         <div className="lg:col-span-3">
-          <PokerTable tableState={tableState} tableMeta={table} />
+          <PokerTable
+            tableState={tableState}
+            tableMeta={table}
+            canSelectSeat={!isSeated}
+            onSeatSelect={handleSeatSelect}
+          />
           <div className="mt-6">
             <ActionControls
               tableState={tableState}
@@ -164,6 +224,43 @@ export default function TablePage() {
           Your turn to act.
         </div>
       )}
+
+      <Modal
+        isOpen={!!seatPrompt}
+        onClose={closeSeatPrompt}
+        title={
+          seatPrompt !== null
+            ? `Take Seat ${seatPrompt.seatIndex + 1}?`
+            : "Take a Seat"
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-300">
+            Select your buy-in to take this seat and join the table.
+          </p>
+          <Input
+            label="Buy-in Amount"
+            type="number"
+            min={1}
+            value={buyInAmount}
+            onChange={(e) => setBuyInAmount(e.target.value)}
+            placeholder="Enter chips"
+          />
+          {seatError && (
+            <div className="rounded-md border border-red-700 bg-red-900/40 px-3 py-2 text-sm text-red-200">
+              {seatError}
+            </div>
+          )}
+          <div className="flex justify-end gap-3">
+            <Button variant="ghost" onClick={closeSeatPrompt} disabled={seatSubmitting}>
+              Cancel
+            </Button>
+            <Button onClick={confirmSeatSelection} disabled={seatSubmitting}>
+              {seatSubmitting ? "Taking seat..." : "Confirm"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
