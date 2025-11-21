@@ -16,6 +16,7 @@ import {
 import { ZodSchema } from "zod";
 import { startGame, getPublicTableView, ensureTableState } from "../services/game.service";
 import { prisma } from "../db/prisma";
+import { deleteTableStateFromRedis } from "../services/table.service";
 import { getTableById } from "../services/table.service";
 
 export function setupWebSocketGateway(io: Server): void {
@@ -133,6 +134,7 @@ export function setupWebSocketGateway(io: Server): void {
         });
 
         for (const tableId of tableIds) {
+          await deleteTableStateFromRedis(tableId);
           await ensureTableState(tableId);
           await broadcastTableState(io, tableId);
         }

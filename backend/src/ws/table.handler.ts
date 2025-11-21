@@ -1,7 +1,7 @@
 import { Server, Socket } from "socket.io";
 import { ErrorMessage } from "./types";
 import { getTableById } from "../services/table.service";
-import { sitDown, standUp } from "../services/table.service";
+import { sitDown, standUp, deleteTableStateFromRedis } from "../services/table.service";
 import { applyPlayerAction, getPublicTableView, ensureTableState } from "../services/game.service";
 import { logger } from "../config/logger";
 import {
@@ -76,6 +76,7 @@ async function handleSitDown(
   try {
     await sitDown(msg.tableId, userId, msg.seatIndex, msg.buyInAmount);
 
+    await deleteTableStateFromRedis(msg.tableId);
     await ensureTableState(msg.tableId);
     await broadcastTableState(io, msg.tableId);
   } catch (error) {
@@ -102,6 +103,7 @@ async function handleStandUp(
 
     await standUp(msg.tableId, userId);
 
+    await deleteTableStateFromRedis(msg.tableId);
     await ensureTableState(msg.tableId);
     await broadcastTableState(io, msg.tableId);
   } catch (error) {
