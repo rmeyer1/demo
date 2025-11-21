@@ -22,6 +22,7 @@ interface PlayerSeatProps {
     error?: string | null;
     onStand: () => void;
   };
+  holeCards?: string[];
 }
 
 export function PlayerSeat({
@@ -34,6 +35,7 @@ export function PlayerSeat({
   onSelectSeat,
   startControl,
   standControl,
+  holeCards,
 }: PlayerSeatProps) {
   // Calculate position around the table (circular layout)
   const angle = (position / totalSeats) * 2 * Math.PI - Math.PI / 2;
@@ -71,6 +73,18 @@ export function PlayerSeat({
         )}
         {seat.isSelf && seat.status === "ACTIVE" && (
           <div className="text-xs text-emerald-200">You</div>
+        )}
+        {holeCards && holeCards.length > 0 && seat.isSelf && (
+          <div className="mt-2 flex gap-1">
+            {holeCards.map((card, idx) => (
+              <div
+                key={idx}
+                className="w-10 h-14 bg-white text-slate-900 font-semibold text-sm rounded-md border border-slate-300 shadow"
+              >
+                <div className="flex items-center justify-center h-full">{card}</div>
+              </div>
+            ))}
+          </div>
         )}
         {isVacant && canSelectSeat && !seat.isSelf && (
           <button

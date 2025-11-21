@@ -50,27 +50,29 @@ export function PokerTable({ tableState, tableMeta, canSelectSeat = false, onSea
         <div className="absolute inset-0">
           {tableState.seats.map((seat) => {
             const isVacant = !(occupancy.get(seat.seatIndex) ?? true);
-            const seatStartControl =
-              startControl && startControl.seatIndex === seat.seatIndex ? startControl : undefined;
-            const seatStandControl =
-              standControl && standControl.seatIndex === seat.seatIndex ? standControl : undefined;
-            return (
-              <PlayerSeat
-                key={seat.seatIndex}
-                seat={seat}
-                position={seat.seatIndex}
-                totalSeats={tableMeta.maxPlayers}
-                isActive={tableState.toActSeatIndex === seat.seatIndex}
-                isVacant={isVacant}
-                canSelectSeat={canSelectSeat}
-                onSelectSeat={onSeatSelect}
-                startControl={seatStartControl}
-                standControl={seatStandControl}
-              />
-            );
-          })}
-        </div>
+          const seatStartControl =
+            startControl && startControl.seatIndex === seat.seatIndex ? startControl : undefined;
+          const seatStandControl =
+            standControl && standControl.seatIndex === seat.seatIndex ? standControl : undefined;
+          const selfHoleCards = seat.isSelf ? tableState.holeCards : undefined;
+          return (
+            <PlayerSeat
+              key={seat.seatIndex}
+              seat={seat}
+              position={seat.seatIndex}
+              totalSeats={tableMeta.maxPlayers}
+              isActive={tableState.toActSeatIndex === seat.seatIndex}
+              isVacant={isVacant}
+              canSelectSeat={canSelectSeat}
+              onSelectSeat={onSeatSelect}
+              startControl={seatStartControl}
+              standControl={seatStandControl}
+              holeCards={selfHoleCards}
+            />
+          );
+        })}
       </div>
+    </div>
     </div>
   );
 }
