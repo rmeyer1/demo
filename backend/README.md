@@ -23,6 +23,13 @@ npm run prisma:migrate
 npm run seed
 ```
 
+4. Seed Supabase-authenticated test users (auto-confirms email, also seeds table + seats):
+```bash
+npm run seed:test-users
+```
+
+> Requires `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL`, `SUPABASE_JWT_SECRET`, and `DATABASE_URL` to be set. No confirmation emails are sent; users are created in a verified state for automated tests.
+
 4. Start the server:
 ```bash
 npm run dev

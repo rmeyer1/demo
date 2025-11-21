@@ -301,6 +301,16 @@ export async function standUp(tableId: string, userId: string) {
   };
 }
 
+// Reactivate a seated player when they reconnect (clear sitting out flag)
+export async function activateSeat(tableId: string, userId: string): Promise<boolean> {
+  const result = await prisma.seat.updateMany({
+    where: { tableId, userId, isSittingOut: true },
+    data: { isSittingOut: false },
+  });
+
+  return result.count > 0;
+}
+
 function formatTableWithSeats(table: any): TableWithSeats {
   return {
     id: table.id,
