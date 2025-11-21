@@ -1,6 +1,6 @@
 import { Server, Socket } from "socket.io";
 import { verifyAccessToken } from "../config/auth";
-import { tableHandlers } from "./table.handler";
+import { tableHandlers, broadcastTableState } from "./table.handler";
 import { handleChatMessage } from "./chat.handler";
 import { logger } from "../config/logger";
 import { ChatSendMessage, ErrorMessage, PongMessage } from "./types";
@@ -14,7 +14,9 @@ import {
   standUpSchema,
 } from "./schemas";
 import { ZodSchema } from "zod";
-import { startGame, getPublicTableView } from "../services/game.service";
+import { startGame, getPublicTableView, ensureTableState } from "../services/game.service";
+import { prisma } from "../db/prisma";
+import { deleteTableStateFromRedis } from "../services/table.service";
 import { getTableById } from "../services/table.service";
 
 export function setupWebSocketGateway(io: Server): void {
@@ -79,13 +81,26 @@ export function setupWebSocketGateway(io: Server): void {
       if (!table || table.hostUserId !== userId) {
         return sendError(socket, "NOT_TABLE_HOST", "Only host can start the game.");
       }
+
+      // Server-side start gating
+      const state = await ensureTableState(data.tableId);
+      const hostSeat = state?.seats.find((s: any) => s.userId === userId);
+      const activeOthers = state?.seats.filter((s: any) => s.userId && s.userId !== userId && !s.isSittingOut && s.stack > 0) || [];
+      if (!hostSeat || hostSeat.stack <= 0 || hostSeat.isSittingOut) {
+        return sendError(socket, "START_CONDITIONS_UNMET", "Host must be seated with chips and not sitting out.");
+      }
+      if (activeOthers.length < 1) {
+        return sendError(socket, "START_CONDITIONS_UNMET", "Need at least one other active player with chips.");
+      }
+      if (state?.currentHand) {
+        return sendError(socket, "HAND_ALREADY_ACTIVE", "A hand is already running.");
+      }
+
       try {
         const result = await startGame(data.tableId, userId);
-        const view = await getPublicTableView(data.tableId, userId);
-        io.to(`table:${data.tableId}`).emit("TABLE_STATE", {
-          tableId: data.tableId,
-          state: view,
-        });
+
+        await broadcastTableState(io, data.tableId);
+
         for (const event of result.events) {
           if (event.type === "HOLE_CARDS") {
             io.to(`user:${event.userId}`).emit("HOLE_CARDS", event);
@@ -102,8 +117,30 @@ export function setupWebSocketGateway(io: Server): void {
       handleChatMessage(io, socket, data as ChatSendMessage)
     ));
 
-    socket.on("disconnect", (reason) => {
+    socket.on("disconnect", async (reason) => {
       logger.info(`WebSocket disconnected: ${userId}, reason: ${reason}`);
+      try {
+        const seats = await prisma.seat.findMany({
+          where: { userId },
+          select: { tableId: true },
+        });
+        if (seats.length === 0) return;
+
+        const tableIds = Array.from(new Set(seats.map((s) => s.tableId)));
+
+        await prisma.seat.updateMany({
+          where: { userId },
+          data: { isSittingOut: true },
+        });
+
+        for (const tableId of tableIds) {
+          await deleteTableStateFromRedis(tableId);
+          await ensureTableState(tableId);
+          await broadcastTableState(io, tableId);
+        }
+      } catch (err) {
+        logger.error("Error handling disconnect sit-out", err);
+      }
     });
   });
 }

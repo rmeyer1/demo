@@ -11,9 +11,23 @@ interface PokerTableProps {
   tableMeta: Table;
   canSelectSeat?: boolean;
   onSeatSelect?: (seatIndex: number) => void;
+  startControl?: {
+    seatIndex: number;
+    pending: boolean;
+    error?: string | null;
+    onStart: () => void;
+  } | null;
+  standControl?: {
+    seatIndex: number;
+    disabled: boolean;
+    disabledReason?: string | null;
+    pending?: boolean;
+    error?: string | null;
+    onStand: () => void;
+  } | null;
 }
 
-export function PokerTable({ tableState, tableMeta, canSelectSeat = false, onSeatSelect }: PokerTableProps) {
+export function PokerTable({ tableState, tableMeta, canSelectSeat = false, onSeatSelect, startControl, standControl }: PokerTableProps) {
   const occupancy = useMemo(() => {
     const map = new Map<number, boolean>();
     (tableMeta.seats || []).forEach((seat) => {
@@ -36,6 +50,10 @@ export function PokerTable({ tableState, tableMeta, canSelectSeat = false, onSea
         <div className="absolute inset-0">
           {tableState.seats.map((seat) => {
             const isVacant = !(occupancy.get(seat.seatIndex) ?? true);
+            const seatStartControl =
+              startControl && startControl.seatIndex === seat.seatIndex ? startControl : undefined;
+            const seatStandControl =
+              standControl && standControl.seatIndex === seat.seatIndex ? standControl : undefined;
             return (
               <PlayerSeat
                 key={seat.seatIndex}
@@ -46,6 +64,8 @@ export function PokerTable({ tableState, tableMeta, canSelectSeat = false, onSea
                 isVacant={isVacant}
                 canSelectSeat={canSelectSeat}
                 onSelectSeat={onSeatSelect}
+                startControl={seatStartControl}
+                standControl={seatStandControl}
               />
             );
           })}

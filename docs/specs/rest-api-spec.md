@@ -357,10 +357,22 @@ Required.
 }
 ```
 
+**Rules / Timing:**
+
+* Allowed when the player is **not in the current hand** (already folded or the hand is complete).
+* If attempted while still active in a hand, return `HAND_IN_PROGRESS` (future alternative: mark `SITTING_OUT` and defer unseat to hand end).
+* Successful call clears the seat; remaining stack is returned to the caller’s balance (or kept virtually off-table).
+
 **Errors:**
 
 * `NOT_SEATED`
-* `HAND_IN_PROGRESS` (if you disallow standing up mid-hand; may be changed later to mark as `SITTING_OUT` instead)
+* `HAND_IN_PROGRESS`
+
+### 5.3 Disconnect / reconnect (informational)
+
+* When a player disconnects during a hand, the server marks the seat `SITTING_OUT` but keeps the seat and chips in place.
+* If that stack reaches **0**, the seat may be auto-unseated without an explicit stand-up call.
+* On reconnect, the client should re-send `JOIN_TABLE` over WebSocket; the server restores seat state in `TABLE_STATE`.
 
 ---
 

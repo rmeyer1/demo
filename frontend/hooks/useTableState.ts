@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { HandResultEvent, PublicTableView } from "@/lib/types";
 import { useWebSocket } from "./useWebSocket";
 
@@ -8,6 +8,8 @@ export function useTableState(tableId: string, inviteCode?: string | null) {
   const [tableState, setTableState] = useState<PublicTableView | null>(null);
   const [handResult, setHandResult] = useState<HandResultEvent | null>(null);
   const { socket, connected, on, emit } = useWebSocket(tableId, inviteCode);
+  const recoveryAttempts = useRef(0);
+  const recoveryTimer = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!socket || !connected) return;
@@ -16,6 +18,13 @@ export function useTableState(tableId: string, inviteCode?: string | null) {
       const payload = (args[0] || {}) as { state?: PublicTableView } | PublicTableView;
       const nextState = (payload as { state?: PublicTableView }).state ?? (payload as PublicTableView);
       if (!nextState) return;
+
+      // Got a state; reset recovery backoff
+      recoveryAttempts.current = 0;
+      if (recoveryTimer.current) {
+        clearTimeout(recoveryTimer.current);
+        recoveryTimer.current = null;
+      }
 
       setTableState(() => {
         // Clear stale hand results when a new hand arrives
@@ -71,6 +80,38 @@ export function useTableState(tableId: string, inviteCode?: string | null) {
       unsubscribeHoleCards?.();
     };
   }, [socket, connected, on, handResult]);
+
+  // Auto-recovery: if TABLE_STATE doesn’t arrive soon, retry JOIN_TABLE and clear stale invite for this table
+  useEffect(() => {
+    if (!connected) return () => {};
+
+    const attemptRecovery = () => {
+      if (recoveryAttempts.current >= 3) return; // cap retries
+
+      // clear invite for this table (it might be wrong/stale)
+      if (typeof window !== "undefined" && tableId) {
+        localStorage.removeItem(`tableInvite:${tableId}`);
+      }
+
+      recoveryAttempts.current += 1;
+      emit("JOIN_TABLE", { tableId, inviteCode });
+
+      // schedule next check only if still no state
+      recoveryTimer.current = setTimeout(() => {
+        if (!tableState) attemptRecovery();
+      }, 1500);
+    };
+
+    // If no tableState arrives shortly after connect, start recovery
+    recoveryTimer.current = setTimeout(() => {
+      if (!tableState) attemptRecovery();
+    }, 1500);
+
+    return () => {
+      if (recoveryTimer.current) clearTimeout(recoveryTimer.current);
+      recoveryTimer.current = null;
+    };
+  }, [connected, emit, inviteCode, tableId, tableState]);
 
   const startGame = useCallback(() => {
     if (connected) {

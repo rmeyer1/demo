@@ -1,8 +1,8 @@
 import { Server, Socket } from "socket.io";
 import { ErrorMessage } from "./types";
 import { getTableById } from "../services/table.service";
-import { sitDown, standUp } from "../services/table.service";
-import { applyPlayerAction, getPublicTableView } from "../services/game.service";
+import { sitDown, standUp, deleteTableStateFromRedis } from "../services/table.service";
+import { applyPlayerAction, getPublicTableView, ensureTableState } from "../services/game.service";
 import { logger } from "../config/logger";
 import {
   JoinTableInput,
@@ -74,14 +74,11 @@ async function handleSitDown(
   userId: string
 ): Promise<void> {
   try {
-    const result = await sitDown(msg.tableId, userId, msg.seatIndex, msg.buyInAmount);
+    await sitDown(msg.tableId, userId, msg.seatIndex, msg.buyInAmount);
 
-    // Broadcast updated table state to all in the room
-    const tableView = await getPublicTableView(msg.tableId, userId);
-    io.to(`table:${msg.tableId}`).emit("TABLE_STATE", {
-      tableId: msg.tableId,
-      state: tableView,
-    });
+    await deleteTableStateFromRedis(msg.tableId);
+    await ensureTableState(msg.tableId);
+    await broadcastTableState(io, msg.tableId);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "UNKNOWN_ERROR";
     sendError(socket, errorMessage, errorMessage);
@@ -95,14 +92,20 @@ async function handleStandUp(
   userId: string
 ): Promise<void> {
   try {
+    const state = await ensureTableState(msg.tableId);
+    if (state?.currentHand) {
+      const playerInHand = state.currentHand.playerStates.find((p: any) => p.userId === userId);
+      if (playerInHand) {
+        sendError(socket, "HAND_IN_PROGRESS", "Cannot stand up during an active hand.");
+        return;
+      }
+    }
+
     await standUp(msg.tableId, userId);
 
-    // Broadcast updated table state
-    const tableView = await getPublicTableView(msg.tableId, userId);
-    io.to(`table:${msg.tableId}`).emit("TABLE_STATE", {
-      tableId: msg.tableId,
-      state: tableView,
-    });
+    await deleteTableStateFromRedis(msg.tableId);
+    await ensureTableState(msg.tableId);
+    await broadcastTableState(io, msg.tableId);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "UNKNOWN_ERROR";
     sendError(socket, errorMessage, errorMessage);
@@ -161,12 +164,7 @@ async function handlePlayerAction(
       }
     }
 
-    // Send updated table state to all
-    const tableView = await getPublicTableView(msg.tableId, userId);
-    io.to(`table:${msg.tableId}`).emit("TABLE_STATE", {
-      tableId: msg.tableId,
-      state: tableView,
-    });
+    await broadcastTableState(io, msg.tableId);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "UNKNOWN_ERROR";
     sendError(socket, errorMessage, errorMessage);
@@ -187,3 +185,22 @@ export const tableHandlers = {
   handleStandUp,
   handlePlayerAction,
 };
+
+export async function broadcastTableState(io: Server, tableId: string) {
+  const sockets = await io.in(`table:${tableId}`).fetchSockets();
+  if (!sockets.length) return;
+
+  await ensureTableState(tableId);
+
+  for (const s of sockets) {
+    const userId = (s as any).userId as string | undefined;
+    if (!userId) continue;
+    const view = await getPublicTableView(tableId, userId);
+    if (view) {
+      s.emit("TABLE_STATE", {
+        tableId,
+        state: view,
+      });
+    }
+  }
+}

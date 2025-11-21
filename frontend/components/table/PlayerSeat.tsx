@@ -10,6 +10,18 @@ interface PlayerSeatProps {
   isVacant: boolean;
   canSelectSeat?: boolean;
   onSelectSeat?: (seatIndex: number) => void;
+  startControl?: {
+    pending: boolean;
+    error?: string | null;
+    onStart: () => void;
+  };
+  standControl?: {
+    disabled: boolean;
+    disabledReason?: string | null;
+    pending?: boolean;
+    error?: string | null;
+    onStand: () => void;
+  };
 }
 
 export function PlayerSeat({
@@ -20,6 +32,8 @@ export function PlayerSeat({
   isVacant,
   canSelectSeat,
   onSelectSeat,
+  startControl,
+  standControl,
 }: PlayerSeatProps) {
   // Calculate position around the table (circular layout)
   const angle = (position / totalSeats) * 2 * Math.PI - Math.PI / 2;
@@ -66,6 +80,39 @@ export function PlayerSeat({
           >
             Sit Here
           </button>
+        )}
+        {startControl && (
+          <div className="mt-2">
+            <button
+              className="w-full rounded-md border border-red-500 bg-red-900/70 px-2 py-1 text-xs font-semibold text-red-100 hover:bg-red-800 disabled:opacity-60 disabled:cursor-not-allowed"
+              onClick={startControl.onStart}
+              type="button"
+              disabled={startControl.pending}
+            >
+              {startControl.pending ? "Starting..." : "Start"}
+            </button>
+            {startControl.error && (
+              <p className="mt-1 text-xs text-red-200">{startControl.error}</p>
+            )}
+          </div>
+        )}
+        {seat.isSelf && standControl && (
+          <div className="mt-2">
+            <button
+              className="w-full rounded-md border border-slate-400 bg-slate-800 px-2 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              onClick={standControl.onStand}
+              type="button"
+              disabled={standControl.disabled || standControl.pending}
+            >
+              {standControl.pending ? "Standing up..." : "Stand Up"}
+            </button>
+            {standControl.error && (
+              <p className="mt-1 text-xs text-red-200">{standControl.error}</p>
+            )}
+            {!standControl.error && standControl.disabled && standControl.disabledReason && (
+              <p className="mt-1 text-[11px] text-slate-300">{standControl.disabledReason}</p>
+            )}
+          </div>
         )}
       </div>
     </div>
