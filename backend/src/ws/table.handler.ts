@@ -1,7 +1,6 @@
 import { Server, Socket } from "socket.io";
 import { ErrorMessage } from "./types";
-import { getTableById } from "../services/table.service";
-import { sitDown, standUp, deleteTableStateFromRedis } from "../services/table.service";
+import { getTableById, activateSeat, deleteTableStateFromRedis, sitDown, standUp } from "../services/table.service";
 import { applyPlayerAction, getPublicTableView, ensureTableState } from "../services/game.service";
 import { logger } from "../config/logger";
 import {
@@ -35,6 +34,16 @@ async function handleJoinTable(
     if (!isHost && !hasSeat && !hasValidInvite) {
       sendError(socket, "NOT_IN_TABLE", "You are not a member of this table.");
       return;
+    }
+
+    // If the user already has a seat but was marked sitting out (e.g., after reconnect), reactivate it.
+    if (hasSeat) {
+      const reactivated = await activateSeat(msg.tableId, userId);
+      if (reactivated) {
+        await deleteTableStateFromRedis(msg.tableId);
+        await ensureTableState(msg.tableId);
+        await broadcastTableState(io, msg.tableId);
+      }
     }
 
     // Join the table room

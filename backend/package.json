@@ -11,6 +11,7 @@
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
     "seed": "ts-node scripts/seed.ts",
+    "seed:test-users": "ts-node scripts/seed-test-users.ts",
     "test": "vitest --watch=false",
     "test:integration": "playwright test tests/integration",
     "test:ws": "playwright test tests/websocket",
