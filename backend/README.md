@@ -53,6 +53,7 @@ npm run dev
 - **Database**: Supabase Postgres via Prisma ORM
 - **Cache**: Redis for table state and pub/sub
 - **Game Engine**: Pure TypeScript module for poker logic
+- **Worker**: Dedicated BullMQ worker (`src/worker.ts`) consumes game queues; run separately from the API/WS process.
 
 ## API Endpoints
 
