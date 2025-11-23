@@ -115,7 +115,12 @@ export default function TablePage() {
     }
 
     if (action === "CALL" && (tableState.callAmount || 0) === 0) {
-      setActionError("Nothing to call.");
+      // If the call amount dropped to zero between renders, fall back to CHECK to avoid backend rejection.
+      emit("PLAYER_ACTION", {
+        tableId,
+        handId: tableState.handId,
+        action: "CHECK",
+      });
       return;
     }
 
