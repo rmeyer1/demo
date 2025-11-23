@@ -18,8 +18,10 @@ import { startGame, getPublicTableView, ensureTableState } from "../services/gam
 import { prisma } from "../db/prisma";
 import { deleteTableStateFromRedis } from "../services/table.service";
 import { getTableById } from "../services/table.service";
+import { redis } from "../db/redis";
+import { GAME_UPDATE_CHANNEL, GameUpdateMessage } from "../queue/pubsub";
 
-export function setupWebSocketGateway(io: Server): void {
+export async function setupWebSocketGateway(io: Server): Promise<void> {
   // Authentication middleware
   io.use((socket, next) => {
     const token =
@@ -143,6 +145,57 @@ export function setupWebSocketGateway(io: Server): void {
       }
     });
   });
+  await startGameUpdateListener(io);
+}
+
+async function startGameUpdateListener(io: Server) {
+  const sub = redis.duplicate();
+  await sub.subscribe(GAME_UPDATE_CHANNEL);
+
+  sub.on("message", async (_channel, payload) => {
+    let message: GameUpdateMessage | null = null;
+    try {
+      message = JSON.parse(payload);
+    } catch (err) {
+      logger.error("Failed to parse game update payload", err);
+      return;
+    }
+
+    if (!message) return;
+    await handleGameUpdate(io, message);
+  });
+}
+
+async function handleGameUpdate(io: Server, message: GameUpdateMessage) {
+  const { tableId, handId } = message;
+
+  if (message.actionSummary) {
+    io.to(`table:${tableId}`).emit("ACTION_TAKEN", {
+      tableId,
+      handId,
+      seatIndex: message.actionSummary.seatIndex,
+      action: message.actionSummary.action,
+      amount: message.actionSummary.amount,
+      betting: message.actionSummary.betting,
+      potTotal: message.actionSummary.potTotal,
+    });
+  }
+
+  if (Array.isArray(message.events)) {
+    for (const event of message.events) {
+      if (event.type === "HOLE_CARDS") {
+        io.to(`user:${event.userId}`).emit("HOLE_CARDS", event);
+      } else if (event.type === "HAND_RESULT") {
+        io.to(`table:${tableId}`).emit("HAND_RESULT", {
+          tableId,
+          handId,
+          results: event.results,
+        });
+      }
+    }
+  }
+
+  await broadcastTableState(io, tableId);
 }
 
 function validateAndHandle<T>(

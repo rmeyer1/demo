@@ -175,7 +175,8 @@ describe("table.service", () => {
   });
 
   it("throws when sitDown targets a taken seat", async () => {
-    mockPrisma.seat.findFirst.mockResolvedValue({
+    mockPrisma.seat.findFirst.mockResolvedValueOnce(null); // existingSeat check
+    mockPrisma.seat.findFirst.mockResolvedValueOnce({
       id: "seat-1",
       seatIndex: 0,
       tableId: "table-1",
@@ -187,7 +188,8 @@ describe("table.service", () => {
   });
 
   it("throws when buy-in is invalid", async () => {
-    mockPrisma.seat.findFirst.mockResolvedValue({
+    mockPrisma.seat.findFirst.mockResolvedValueOnce(null); // existingSeat check
+    mockPrisma.seat.findFirst.mockResolvedValueOnce({
       id: "seat-1",
       seatIndex: 0,
       tableId: "table-1",
@@ -199,7 +201,8 @@ describe("table.service", () => {
   });
 
   it("sits a player and returns seat info", async () => {
-    mockPrisma.seat.findFirst.mockResolvedValue({
+    mockPrisma.seat.findFirst.mockResolvedValueOnce(null); // existingSeat check
+    mockPrisma.seat.findFirst.mockResolvedValueOnce({
       id: "seat-1",
       seatIndex: 0,
       tableId: "table-1",
@@ -220,6 +223,9 @@ describe("table.service", () => {
 
     const result = await sitDown("table-1", "user-2", 0, 200);
 
+    expect(mockPrisma.profile.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "user-2" } })
+    );
     expect(mockPrisma.seat.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ userId: "user-2", stack: 200, isSittingOut: false }),

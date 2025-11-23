@@ -152,6 +152,10 @@ SUPABASE_JWT_SECRET=<supabase-jwt-secret>
 DATABASE_URL=postgresql://postgres:<password>@db.<domain>.supabase.co:5432/postgres
 
 # Redis
+# Prefer managed Redis in staging/production; keep localhost for local dev.
+# Examples:
+#  - Local:   redis://localhost:6379
+#  - Managed: rediss://:<password>@<host>:<port>
 REDIS_URL=redis://localhost:6379
 
 # Backend

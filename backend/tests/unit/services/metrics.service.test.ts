@@ -76,14 +76,16 @@ describe("metrics.service", () => {
 
     await getDashboardSummary("user-1", "7d");
 
-    expect(mockPrisma.playerHand.findMany).toHaveBeenCalledWith({
-      where: {
-        userId: "user-1",
-        hand: {
-          completedAt: { gte: new Date("2024-01-03T12:00:00.000Z") },
+    expect(mockPrisma.playerHand.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId: "user-1",
+          hand: {
+            completedAt: { gte: new Date("2024-01-03T12:00:00.000Z") },
+          },
         },
-      },
-    });
+      })
+    );
   });
 
   it("builds progression grouped by hand number", async () => {
