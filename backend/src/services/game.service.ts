@@ -1,5 +1,4 @@
 import { prisma } from "../db/prisma";
-import { redis } from "../db/redis";
 import {
   getTableStateFromRedis,
   setTableStateInRedis,
@@ -8,6 +7,7 @@ import {
 import * as engine from "../engine";
 import { cardToString } from "../engine/cards";
 import { logger } from "../config/logger";
+import { enqueueAutoStart, enqueueTurnTimeout } from "../queue/queues";
 
 export interface PlayerAction {
   action: "FOLD" | "CHECK" | "CALL" | "BET" | "RAISE" | "ALL_IN";
@@ -157,68 +157,29 @@ export async function startGame(tableId: string, hostUserId: string) {
 }
 
 // --- Auto-start orchestration ---
-const autoStartTimers = new Map<string, NodeJS.Timeout>();
 const AUTO_START_DELAY_MS = 2000;
-const turnTimers = new Map<string, NodeJS.Timeout>();
-const TURN_TIMEOUT_MS = 15000; // stub timeout
+const TURN_TIMEOUT_MS = 15000; // TODO: make configurable per table/game
 
 export async function scheduleAutoStart(tableId: string, delayMs = AUTO_START_DELAY_MS) {
-  clearAutoStart(tableId);
-
-  const timer = setTimeout(async () => {
-    try {
-      const table = await prisma.table.findUnique({
-        where: { id: tableId },
-        select: { status: true },
-      });
-      if (!table || table.status !== "IN_GAME") return;
-
-      const state = await ensureTableState(tableId);
-      if (!state || state.currentHand) return;
-
-      const eligible = state.seats.filter(
-        (s: any) => s.userId && !s.isSittingOut && s.stack > 0
-      );
-      if (eligible.length < 2) return;
-
-      await startHand(tableId);
-    } catch (err) {
-      logger.error("Auto-start hand failed", err);
-    } finally {
-      clearAutoStart(tableId);
-    }
-  }, delayMs);
-
-  autoStartTimers.set(tableId, timer);
+  // JobId prevents duplicate queued auto-starts; worker will validate eligibility.
+  await enqueueAutoStart({ tableId }, delayMs);
 }
 
 export function clearAutoStart(tableId: string) {
-  const timer = autoStartTimers.get(tableId);
-  if (timer) {
-    clearTimeout(timer);
-    autoStartTimers.delete(tableId);
-  }
+  // No-op with queued timers; removal not required because jobId de-duplicates.
+  return;
 }
 
-export function scheduleTurnTimeout(
+export async function scheduleTurnTimeout(
   tableId: string,
   handId: string,
   toActSeatIndex: number,
   timeoutMs = TURN_TIMEOUT_MS
 ) {
-  const key = `${tableId}:${handId}`;
-  const existing = turnTimers.get(key);
-  if (existing) clearTimeout(existing);
-
-  const timer = setTimeout(() => {
-    // Stub for auto-fold/auto-check: implement action dispatch here
-    logger.info(
-      `Turn timeout (stub) for table ${tableId}, hand ${handId}, seat ${toActSeatIndex}`
-    );
-    turnTimers.delete(key);
-  }, timeoutMs);
-
-  turnTimers.set(key, timer);
+  await enqueueTurnTimeout(
+    { tableId, handId, seatIndex: toActSeatIndex },
+    timeoutMs
+  );
 }
 
 async function initializeTableStateFromDb(tableId: string): Promise<any | null> {

@@ -79,6 +79,11 @@ DATABASE_URL="postgresql://postgres:<pass>@db.<domain>.supabase.co:5432/postgres
 SUPABASE_JWT_SECRET=<your-supabase-jwt-secret>
 
 # Redis connection
+# Use managed Redis in non-local environments; fallback to localhost for local dev.
+# Examples:
+#   - Local dev:          REDIS_URL="redis://localhost:6379"
+#   - Managed (Upstash):  REDIS_URL="rediss://:<password>@<host>:<port>"
+#   - Managed (Elastic):  REDIS_URL="rediss://:<user>:<password>@<host>:<port>"
 REDIS_URL="redis://localhost:6379"
 
 # Backend

@@ -1,7 +1,7 @@
 import { Server, Socket } from "socket.io";
 import { ErrorMessage } from "./types";
 import { getTableById, activateSeat, deleteTableStateFromRedis, sitDown, standUp } from "../services/table.service";
-import { applyPlayerAction, getPublicTableView, ensureTableState } from "../services/game.service";
+import { getPublicTableView, ensureTableState } from "../services/game.service";
 import { logger } from "../config/logger";
 import {
   JoinTableInput,
@@ -11,6 +11,7 @@ import {
   StandUpInput,
 } from "./schemas";
 import { checkRateLimit } from "../utils/rateLimiter";
+import { enqueuePlayerAction } from "../queue/queues";
 
 async function handleJoinTable(
   io: Server,
@@ -139,41 +140,19 @@ async function handlePlayerAction(
       return;
     }
 
-    const result = await applyPlayerAction(msg.tableId, userId, msg.handId, {
-      action: msg.action,
-      amount: msg.amount,
+    await enqueuePlayerAction({
+      tableId: msg.tableId,
+      userId,
+      handId: msg.handId,
+      action: { action: msg.action, amount: msg.amount },
     });
 
-    // Broadcast action taken
-    io.to(`table:${msg.tableId}`).emit("ACTION_TAKEN", {
+    // Ack receipt; actual processing/broadcast handled by worker via pub/sub.
+    socket.emit("ACTION_ENQUEUED", {
       tableId: msg.tableId,
       handId: msg.handId,
-      seatIndex: result.seatIndex,
       action: msg.action,
-      amount: msg.amount || 0,
-      betting: result.betting,
-      potTotal: result.potTotal,
     });
-
-    // Broadcast updated table state
-    for (const event of result.events) {
-      if (event.type === "HOLE_CARDS") {
-        // Send hole cards only to the specific player
-        io.to(`user:${event.userId}`).emit("HOLE_CARDS", {
-          tableId: msg.tableId,
-          handId: msg.handId,
-          cards: event.cards,
-        });
-      } else if (event.type === "HAND_RESULT") {
-        io.to(`table:${msg.tableId}`).emit("HAND_RESULT", {
-          tableId: msg.tableId,
-          handId: msg.handId,
-          results: event.results,
-        });
-      }
-    }
-
-    await broadcastTableState(io, msg.tableId);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "UNKNOWN_ERROR";
     sendError(socket, errorMessage, errorMessage);

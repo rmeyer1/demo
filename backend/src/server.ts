@@ -36,7 +36,7 @@ async function start() {
   });
 
   // Setup WebSocket gateway
-  setupWebSocketGateway(io);
+  await setupWebSocketGateway(io);
 
   // Start server
   await app.listen({ port: PORT, host: "0.0.0.0" });
