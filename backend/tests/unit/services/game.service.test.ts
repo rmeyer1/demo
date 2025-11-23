@@ -60,6 +60,7 @@ const baseState = {
     { seatIndex: 1, userId: "user-2" },
   ],
   currentHand: {
+    handId: "hand-1",
     toActSeatIndex: 0,
   },
 };
@@ -104,7 +105,7 @@ describe("game.service", () => {
   it("throws when it is not the player's turn", async () => {
     mockTableService.getTableStateFromRedis.mockResolvedValue({
       ...baseState,
-      currentHand: { toActSeatIndex: 1 },
+      currentHand: { ...baseState.currentHand, toActSeatIndex: 1 },
     });
 
     await expect(
@@ -113,8 +114,30 @@ describe("game.service", () => {
     expect(mockEngine.applyPlayerAction).not.toHaveBeenCalled();
   });
 
+  it("returns stale when handId does not match current hand", async () => {
+    mockTableService.getTableStateFromRedis.mockResolvedValue({
+      ...baseState,
+      currentHand: { ...baseState.currentHand, handId: "hand-2" },
+    });
+
+    const result = await applyPlayerAction("table-1", "user-1", "hand-1", { action: "CHECK" });
+
+    expect(result).toEqual({ stale: true });
+    expect(mockEngine.applyPlayerAction).not.toHaveBeenCalled();
+    expect(mockTableService.setTableStateInRedis).not.toHaveBeenCalled();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      "Stale action rejected",
+      expect.objectContaining({
+        tableId: "table-1",
+        userId: "user-1",
+        handId: "hand-1",
+        currentHandId: "hand-2",
+      })
+    );
+  });
+
   it("applies action and saves updated state", async () => {
-    const updatedState = { ...baseState, currentHand: { toActSeatIndex: 1 }, pot: 50 };
+    const updatedState = { ...baseState, currentHand: { ...baseState.currentHand, toActSeatIndex: 1 }, pot: 50 };
 
     mockTableService.getTableStateFromRedis.mockResolvedValue(baseState);
     mockEngine.applyPlayerAction.mockReturnValue({ state: updatedState, events: [] });
@@ -217,7 +240,7 @@ describe("game.service", () => {
   });
 
   it("startHand uses existing state and saves it", async () => {
-    const startedState = { ...baseState, currentHand: { toActSeatIndex: 1 }, started: true };
+    const startedState = { ...baseState, currentHand: { ...baseState.currentHand, toActSeatIndex: 1 }, started: true };
     mockTableService.getTableStateFromRedis.mockResolvedValue(baseState);
     mockEngine.startHand.mockReturnValue({ state: startedState, events: [] });
 

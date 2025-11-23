@@ -39,6 +39,15 @@ const actionWorker = new Worker<PlayerActionJob>(
     const { tableId, userId, handId, action } = job.data;
     const result = await applyPlayerAction(tableId, userId, handId, action);
 
+    if ("stale" in result) {
+      logger.warn("Stale player action ignored", {
+        tableId,
+        userId,
+        handId,
+      });
+      return;
+    }
+
     if (result.seatIndex === undefined) {
       throw new Error("ACTION_RESULT_MISSING_SEAT_INDEX");
     }
@@ -102,6 +111,15 @@ const turnWorker = new Worker<TurnTimeoutJob>(
       handId,
       timeoutAction
     );
+
+    if ("stale" in result) {
+      logger.warn("Stale turn-timeout action ignored", {
+        tableId,
+        userId: playerState.userId,
+        handId,
+      });
+      return;
+    }
 
     await publishGameUpdate({
       type: "TURN_TIMEOUT",

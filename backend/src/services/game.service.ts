@@ -6,6 +6,7 @@ import {
 } from "./table.service";
 import * as engine from "../engine";
 import { cardToString } from "../engine/cards";
+import { EngineResult } from "../engine/types";
 import { logger } from "../config/logger";
 import { enqueueAutoStart, enqueueTurnTimeout } from "../queue/queues";
 
@@ -14,12 +15,14 @@ export interface PlayerAction {
   amount?: number;
 }
 
+export type ApplyPlayerActionResult = EngineResult | { stale: true };
+
 export async function applyPlayerAction(
   tableId: string,
   userId: string,
   handId: string,
   action: PlayerAction
-) {
+): Promise<ApplyPlayerActionResult> {
   // Load table state from Redis
   let tableState = await getTableStateFromRedis(tableId);
 
@@ -29,6 +32,17 @@ export async function applyPlayerAction(
     if (!tableState) {
       throw new Error("TABLE_STATE_NOT_FOUND");
     }
+  }
+
+  // Reject stale actions that target a different hand than the one currently active.
+  if (!tableState.currentHand || tableState.currentHand.handId !== handId) {
+    logger.warn("Stale action rejected", {
+      tableId,
+      userId,
+      handId,
+      currentHandId: tableState.currentHand?.handId,
+    });
+    return { stale: true as const };
   }
 
   // Verify it's the player's turn
