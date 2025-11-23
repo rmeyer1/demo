@@ -55,6 +55,10 @@ function resolveHostDisplayName(input: CreateTableInput): string {
   return `player-${input.hostUserId.slice(0, 8)}`;
 }
 
+function resolveGenericDisplayName(userId: string) {
+  return `player-${userId.slice(0, 8)}`;
+}
+
 export async function createTable(input: CreateTableInput): Promise<TableWithSeats> {
   const table = await prisma.$transaction(async (tx) => {
     // Generate unique invite code inside the same transaction to avoid races
@@ -244,6 +248,13 @@ export async function sitDown(
   if (buyInAmount <= 0) {
     throw new Error("INVALID_BUYIN");
   }
+
+  // Ensure profile row exists for FK constraint
+  await prisma.profile.upsert({
+    where: { id: userId },
+    update: { updatedAt: new Date() },
+    create: { id: userId, displayName: resolveGenericDisplayName(userId) },
+  });
 
   // Update seat
   const updatedSeat = await prisma.seat.update({

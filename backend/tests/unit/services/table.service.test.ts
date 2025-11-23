@@ -223,6 +223,9 @@ describe("table.service", () => {
 
     const result = await sitDown("table-1", "user-2", 0, 200);
 
+    expect(mockPrisma.profile.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "user-2" } })
+    );
     expect(mockPrisma.seat.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ userId: "user-2", stack: 200, isSittingOut: false }),
