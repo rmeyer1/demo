@@ -13,8 +13,12 @@ import {
   AutoStartJob,
   PlayerActionJob,
   TurnTimeoutJob,
+  actionQueue,
+  autoStartQueue,
+  turnTimeoutQueue,
 } from "./queue/queues";
 import { publishGameUpdate } from "./queue/pubsub";
+import { startQueueMonitoring } from "./queue/monitor";
 
 const workerOptions = {
   connection: {
@@ -24,8 +28,12 @@ const workerOptions = {
 
 logger.info("Starting BullMQ workers...");
 
+startQueueMonitoring([actionQueue, turnTimeoutQueue, autoStartQueue]);
+
+const workers: Worker[] = [];
+
 // Player actions are serialized per table via group id set on the producer.
-new Worker<PlayerActionJob>(
+const actionWorker = new Worker<PlayerActionJob>(
   "game-actions",
   async (job) => {
     const { tableId, userId, handId, action } = job.data;
@@ -55,12 +63,14 @@ new Worker<PlayerActionJob>(
     };
   },
   workerOptions
-).on("failed", (job, err) => {
+);
+actionWorker.on("failed", (job, err) => {
   logger.error(`Action job failed (${job?.id}):`, err);
 });
+workers.push(actionWorker);
 
 // Durable turn timers
-new Worker<TurnTimeoutJob>(
+const turnWorker = new Worker<TurnTimeoutJob>(
   "game-turn-timers",
   async (job) => {
     const { tableId, handId, seatIndex } = job.data;
@@ -108,12 +118,14 @@ new Worker<TurnTimeoutJob>(
     });
   },
   workerOptions
-).on("failed", (job, err) => {
+);
+turnWorker.on("failed", (job, err) => {
   logger.error(`Turn-timeout job failed (${job?.id}):`, err);
 });
+workers.push(turnWorker);
 
 // Auto-start next hand when table eligible
-new Worker<AutoStartJob>(
+const autoStartWorker = new Worker<AutoStartJob>(
   "game-auto-start",
   async (job) => {
     const { tableId } = job.data;
@@ -135,8 +147,19 @@ new Worker<AutoStartJob>(
     });
   },
   workerOptions
-).on("failed", (job, err) => {
+);
+autoStartWorker.on("failed", (job, err) => {
   logger.error(`Auto-start job failed (${job?.id}):`, err);
 });
+workers.push(autoStartWorker);
 
 logger.info("BullMQ workers ready.");
+
+async function shutdown() {
+  logger.info("Shutting down workers...");
+  await Promise.allSettled(workers.map((w) => w.close()));
+  process.exit(0);
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
