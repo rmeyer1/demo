@@ -40,6 +40,8 @@ npm run dev
 - `npm run dev` - Start development server with hot reload
 - `npm run build` - Build TypeScript to JavaScript
 - `npm start` - Start production server
+- `npm run worker` - Start BullMQ worker (dev, ts-node)
+- `npm run start:worker` - Start compiled BullMQ worker
 - `npm run prisma:migrate` - Run database migrations
 - `npm run prisma:generate` - Generate Prisma client
 - `npm run prisma:studio` - Open Prisma Studio
