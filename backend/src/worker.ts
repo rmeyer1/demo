@@ -37,7 +37,21 @@ const actionWorker = new Worker<PlayerActionJob>(
   "game-actions",
   async (job) => {
     const { tableId, userId, handId, action } = job.data;
-    const result = await applyPlayerAction(tableId, userId, handId, action);
+    let result;
+    try {
+      result = await applyPlayerAction(tableId, userId, handId, action);
+    } catch (err: any) {
+      logger.error("Action processing failed", err);
+      await publishGameUpdate({
+        type: "ERROR",
+        tableId,
+        handId,
+        userId,
+        errorCode: err?.message || "ACTION_FAILED",
+        errorMessage: "Your action could not be processed. Please try again.",
+      });
+      throw err;
+    }
 
     if (result.seatIndex === undefined) {
       throw new Error("ACTION_RESULT_MISSING_SEAT_INDEX");

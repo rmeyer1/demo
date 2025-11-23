@@ -4,6 +4,7 @@ let handCreateCalled = false;
 
 const mockTx = vi.hoisted(() => ({
   hand: {
+    findUnique: vi.fn(() => null),
     create: vi.fn(() => {
       handCreateCalled = true;
       return { id: "hand-xyz" };

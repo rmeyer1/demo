@@ -1,4 +1,5 @@
 import { prisma } from "../db/prisma";
+import { Prisma } from "@prisma/client";
 import {
   getTableStateFromRedis,
   setTableStateInRedis,
@@ -298,7 +299,36 @@ export async function persistHandToDb(
       };
     });
 
-  await prisma.$transaction(async (tx: any) => {
+  await prisma
+    .$transaction(async (tx: any) => {
+      const existingHand = await tx.hand.findUnique({
+        where: {
+          tableId_handNumber: {
+            tableId,
+            handNumber: BigInt(handState.handNumber),
+        },
+      },
+    });
+
+    if (existingHand) {
+      logger.warn("Hand already persisted; skipping duplicate", {
+        tableId,
+        handNumber: handState.handNumber,
+      });
+      for (const fs of finalStacks) {
+        await tx.seat.updateMany({
+          where: {
+            tableId,
+            seatIndex: fs.seatIndex,
+          },
+          data: {
+            stack: fs.stack,
+          },
+        });
+      }
+      return;
+    }
+
     const handRecord = await tx.hand.create({
       data: {
         tableId,
@@ -355,7 +385,17 @@ export async function persistHandToDb(
         },
       });
     }
-  });
+    })
+    .catch((err: any) => {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        logger.warn("Hand persistence duplicate detected, skipping", {
+          tableId,
+          handNumber: handState.handNumber,
+        });
+        return;
+      }
+      throw err;
+    });
 }
 
 function cloneHand(hand: any) {
