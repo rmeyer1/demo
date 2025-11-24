@@ -1,6 +1,13 @@
 import { Server, Socket } from "socket.io";
 import { ErrorMessage } from "./types";
-import { getTableById, activateSeat, deleteTableStateFromRedis, sitDown, standUp } from "../services/table.service";
+import {
+  getTableById,
+  activateSeat,
+  deleteTableStateFromRedis,
+  sitDown,
+  standUp,
+  setTableStateInRedis,
+} from "../services/table.service";
 import { getPublicTableView, ensureTableState } from "../services/game.service";
 import { logger } from "../config/logger";
 import {
@@ -41,8 +48,17 @@ async function handleJoinTable(
     if (hasSeat) {
       const reactivated = await activateSeat(msg.tableId, userId);
       if (reactivated) {
-        await deleteTableStateFromRedis(msg.tableId);
-        await ensureTableState(msg.tableId);
+        const state = await ensureTableState(msg.tableId);
+        if (state?.currentHand) {
+          const seatIdx = state.seats.findIndex((s: any) => s.userId === userId);
+          if (seatIdx >= 0) {
+            state.seats[seatIdx].isSittingOut = false;
+            await setTableStateInRedis(msg.tableId, state);
+          }
+        } else {
+          await deleteTableStateFromRedis(msg.tableId);
+          await ensureTableState(msg.tableId);
+        }
         await broadcastTableState(io, msg.tableId);
       }
     }
@@ -84,6 +100,12 @@ async function handleSitDown(
   userId: string
 ): Promise<void> {
   try {
+    const state = await ensureTableState(msg.tableId);
+    if (state?.currentHand) {
+      sendError(socket, "HAND_IN_PROGRESS", "Cannot sit down during an active hand.");
+      return;
+    }
+
     await sitDown(msg.tableId, userId, msg.seatIndex, msg.buyInAmount);
 
     await deleteTableStateFromRedis(msg.tableId);
