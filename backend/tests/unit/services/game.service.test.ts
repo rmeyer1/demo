@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { applyPlayerAction, startHand, getPublicTableView } from "../../../src/services/game.service";
+import { applyPlayerAction, startHand, getPublicTableView, persistHandToDb } from "../../../src/services/game.service";
 
 const mockTx = vi.hoisted(() => ({
   hand: {
+    findUnique: vi.fn(),
     create: vi.fn().mockResolvedValue({ id: "hand-id" }),
   },
   playerHand: {
@@ -237,6 +238,77 @@ describe("game.service", () => {
 
     expect(result.events.map((e: any) => e.type)).toContain("HAND_COMPLETE");
     expect(mockPrisma.$transaction).toHaveBeenCalled();
+  });
+
+  it("is idempotent when persisting a completed hand", async () => {
+    const handState = {
+      handId: "hand-1",
+      handNumber: 10,
+      dealerSeatIndex: 0,
+      smallBlindSeatIndex: 0,
+      bigBlindSeatIndex: 1,
+      communityCards: [],
+      street: "RIVER",
+      potTotal: 50,
+      toActSeatIndex: null,
+      playerStates: [
+        {
+          seatIndex: 0,
+          userId: "user-1",
+          totalBet: 20,
+          currentBet: 0,
+        },
+        {
+          seatIndex: 1,
+          userId: "user-2",
+          totalBet: 30,
+          currentBet: 0,
+        },
+      ],
+      betting: {
+        street: "RIVER",
+        currentBet: 0,
+        minRaise: 10,
+        lastAggressorSeatIndex: 1,
+        contributions: { 0: 20, 1: 30 },
+      },
+    };
+
+    const events = [
+      {
+        type: "PLAYER_ACTION_APPLIED",
+        seatIndex: 1,
+        action: "BET",
+        amount: 30,
+        betting: { street: "RIVER" },
+      },
+      {
+        type: "HAND_RESULT",
+        finalStacks: [
+          { seatIndex: 0, stack: 120 },
+          { seatIndex: 1, stack: 70 },
+        ],
+      },
+      { type: "HAND_COMPLETE" },
+    ];
+
+    mockTx.hand.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "existing-hand-id" });
+
+    await persistHandToDb("table-1", handState, events, [
+      { seatIndex: 0, userId: "user-1", stack: 120 },
+      { seatIndex: 1, userId: "user-2", stack: 70 },
+    ]);
+
+    await persistHandToDb("table-1", handState, events, [
+      { seatIndex: 0, userId: "user-1", stack: 120 },
+      { seatIndex: 1, userId: "user-2", stack: 70 },
+    ]);
+
+    expect(mockTx.hand.create).toHaveBeenCalledTimes(1);
+    // seat updates still happen to ensure stacks are in sync
+    expect(mockTx.seat.updateMany).toHaveBeenCalled();
   });
 
   it("startHand uses existing state and saves it", async () => {

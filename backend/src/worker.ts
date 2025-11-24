@@ -37,7 +37,21 @@ const actionWorker = new Worker<PlayerActionJob>(
   "game-actions",
   async (job) => {
     const { tableId, userId, handId, action } = job.data;
-    const result = await applyPlayerAction(tableId, userId, handId, action);
+    let result;
+    try {
+      result = await applyPlayerAction(tableId, userId, handId, action);
+    } catch (err: any) {
+      logger.error("Action processing failed", err);
+      await publishGameUpdate({
+        type: "ERROR",
+        tableId,
+        handId,
+        userId,
+        errorCode: err?.message || "ACTION_FAILED",
+        errorMessage: "Your action could not be processed. Please try again.",
+      });
+      throw err;
+    }
 
     if ("stale" in result) {
       logger.warn("Stale player action ignored", {
@@ -148,14 +162,32 @@ const autoStartWorker = new Worker<AutoStartJob>(
   async (job) => {
     const { tableId } = job.data;
     const state = await ensureTableState(tableId);
-    if (!state || state.currentHand) return;
+    if (!state) return;
+    if (state.currentHand) {
+      logger.debug("Auto-start skipped: hand already active", {
+        tableId,
+        handId: state.currentHand.handId,
+      });
+      return;
+    }
 
     const eligible = state.seats.filter(
       (s: any) => s.userId && !s.isSittingOut && s.stack > 0
     );
-    if (eligible.length < 2) return;
+    if (eligible.length < 2) {
+      logger.debug("Auto-start skipped: not enough eligible players", {
+        tableId,
+        eligible: eligible.length,
+      });
+      return;
+    }
 
     const result = await startHand(tableId);
+    logger.info("Auto-started new hand", {
+      tableId,
+      handId: result.state.currentHand?.handId,
+      handNumber: result.state.currentHand?.handNumber,
+    });
 
     await publishGameUpdate({
       type: "HAND_STARTED",

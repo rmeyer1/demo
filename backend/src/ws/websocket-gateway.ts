@@ -169,6 +169,19 @@ async function startGameUpdateListener(io: Server) {
 async function handleGameUpdate(io: Server, message: GameUpdateMessage) {
   const { tableId, handId } = message;
 
+  if (message.type === "ERROR") {
+    const payload = {
+      code: message.errorCode || "INTERNAL_ERROR",
+      message: message.errorMessage || "An error occurred.",
+    };
+    if (message.userId) {
+      io.to(`user:${message.userId}`).emit("ERROR", payload);
+    } else {
+      io.to(`table:${tableId}`).emit("ERROR", payload);
+    }
+    return;
+  }
+
   if (message.actionSummary) {
     io.to(`table:${tableId}`).emit("ACTION_TAKEN", {
       tableId,
