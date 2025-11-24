@@ -371,11 +371,11 @@ export function advanceIfReady(state: TableState): EngineResult | null {
   const events: EngineEvent[] = [];
   let newState = { ...state };
 
-  // Check if only one player remains
-  const activePlayers = hand.playerStates.filter((p) => p.status === "ACTIVE");
-  if (activePlayers.length <= 1) {
+  // Check if only one player remains (excluding folded players; ALL_IN still contest the pot)
+  const livePlayers = hand.playerStates.filter((p) => p.status !== "FOLDED");
+  if (livePlayers.length <= 1) {
     // Hand ends, one winner
-    const winner = activePlayers[0];
+    const winner = livePlayers[0];
     if (winner) {
       // Distribute pot to winner
       const winnings = hand.potTotal;
@@ -478,7 +478,7 @@ export function advanceIfReady(state: TableState): EngineResult | null {
 
 function performShowdown(state: TableState, events: EngineEvent[]): EngineResult {
   const hand = state.currentHand!;
-  const activePlayers = hand.playerStates.filter((p) => p.status === "ACTIVE");
+  const activePlayers = hand.playerStates.filter((p) => p.status !== "FOLDED");
 
   // Evaluate all hands
   const evaluatedHands = new Map<number, { hand: EvaluatedHand; seatIndex: number }>();
