@@ -136,8 +136,17 @@ export async function setupWebSocketGateway(io: Server): Promise<void> {
         });
 
         for (const tableId of tableIds) {
-          await deleteTableStateFromRedis(tableId);
-          await ensureTableState(tableId);
+          const state = await ensureTableState(tableId);
+          if (state?.currentHand) {
+            // Don't drop in-progress hand; just mark seats sitting out in cached state.
+            state.seats = state.seats.map((s: any) =>
+              s.userId === userId ? { ...s, isSittingOut: true } : s
+            );
+            await setTableStateInRedis(tableId, state);
+          } else {
+            await deleteTableStateFromRedis(tableId);
+            await ensureTableState(tableId);
+          }
           await broadcastTableState(io, tableId);
         }
       } catch (err) {
