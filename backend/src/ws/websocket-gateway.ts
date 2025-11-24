@@ -16,8 +16,7 @@ import {
 import { ZodSchema } from "zod";
 import { startGame, getPublicTableView, ensureTableState } from "../services/game.service";
 import { prisma } from "../db/prisma";
-import { deleteTableStateFromRedis } from "../services/table.service";
-import { getTableById } from "../services/table.service";
+import { deleteTableStateFromRedis, setTableStateInRedis, getTableById } from "../services/table.service";
 import { redis } from "../db/redis";
 import { GAME_UPDATE_CHANNEL, GameUpdateMessage } from "../queue/pubsub";
 
