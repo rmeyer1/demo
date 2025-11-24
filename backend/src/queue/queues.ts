@@ -38,19 +38,21 @@ export async function enqueuePlayerAction(job: PlayerActionJob) {
 }
 
 export async function enqueueTurnTimeout(job: TurnTimeoutJob, delayMs: number) {
+  const jobId = `${job.tableId}|${job.handId}|${job.seatIndex}`;
   await turnTimeoutQueue.add("turn-timeout", job, {
     delay: delayMs,
     removeOnComplete: 200,
     removeOnFail: 500,
-    jobId: `${job.tableId}:${job.handId}:${job.seatIndex}`,
+    jobId,
   });
 }
 
 export async function enqueueAutoStart(job: AutoStartJob, delayMs: number) {
+  const jobId = `auto-start|${job.tableId}`;
   await autoStartQueue.add("auto-start", job, {
     delay: delayMs,
     removeOnComplete: 200,
     removeOnFail: 500,
-    jobId: `auto-start:${job.tableId}`,
+    jobId,
   });
 }
