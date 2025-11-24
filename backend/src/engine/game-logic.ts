@@ -538,6 +538,8 @@ function resetBettingRound(hand: HandState, state: TableState): void {
   hand.betting.currentBet = 0;
   hand.betting.minRaise = state.bigBlind;
   hand.betting.lastAggressorSeatIndex = undefined;
+  // Track who started this betting round to detect all-check completion.
+  (hand.betting as any).roundFirstToActSeatIndex = undefined;
   hand.betting.contributions = {};
 
   // Reset current bets for all active players
@@ -553,6 +555,7 @@ function resetBettingRound(hand: HandState, state: TableState): void {
   hand.toActSeatIndex = firstToAct;
   hand.betting.toActSeatIndex = firstToAct;
   hand.callAmount = 0;
+  (hand.betting as any).roundFirstToActSeatIndex = firstToAct;
 }
 
 function isBettingRoundComplete(state: TableState): boolean {
@@ -585,9 +588,12 @@ function isBettingRoundComplete(state: TableState): boolean {
       // Action has returned to last aggressor
       return true;
     }
-  } else if (currentBet === 0 && hand.toActSeatIndex === undefined) {
-    // Everyone checked
-    return true;
+  } else if (currentBet === 0) {
+    const roundFirst = (hand.betting as any).roundFirstToActSeatIndex;
+    if (roundFirst !== undefined && hand.toActSeatIndex === roundFirst) {
+      // Everyone has checked and action returned to the round starter
+      return true;
+    }
   }
 
   return false;
