@@ -156,6 +156,7 @@ export async function registerTableRoutes(app: FastifyInstance) {
           bigBlind: table.bigBlind,
           hostUserId: table.hostUserId,
           createdAt: table.createdAt.toISOString(),
+          inviteCode: table.inviteCode, // Added inviteCode
         }))
       );
     }
