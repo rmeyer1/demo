@@ -212,6 +212,8 @@ async function handleGameUpdate(io: Server, message: GameUpdateMessage) {
           handId,
           results: event.results,
         });
+      } else if (event.type === "CARDS_DEALT") {
+        io.to(`table:${tableId}`).emit("CARDS_DEALT", event);
       }
     }
   }

@@ -19,11 +19,13 @@ describe("all-in call heads-up still proceeds to showdown", () => {
     const start = startHand(state);
     state = start.state;
 
-    // SB (seat 1) to act: call remaining 5, goes all-in
-    const callAmount = state.currentHand!.callAmount;
-    applyPlayerAction(state, 1, { action: "CALL", amount: callAmount });
+    // BB (seat 0) to act. SB's all-in is 5, which is less than BB's 10.
+    // BB has the option to check or raise. Here we check.
+    const bbAction: PlayerAction = { action: "CHECK" };
+    const actionResult = applyPlayerAction(state, 0, bbAction);
+    state = actionResult.state;
 
-    // Betting round should be complete; advance should move to flop, not end hand
+    // Betting round should be complete; advance should move to flop
     const adv = advanceIfReady(state);
     expect(adv).not.toBeNull();
     expect(adv!.events.map((e) => e.type)).not.toContain("HAND_COMPLETE");
