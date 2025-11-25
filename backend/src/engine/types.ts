@@ -63,6 +63,7 @@ export interface PlayerHandState {
   totalBet: number;
   status: "ACTIVE" | "FOLDED" | "ALL_IN";
   isAllIn: boolean;
+  hasActed: boolean;
 }
 
 export interface SidePot {
@@ -100,3 +101,7 @@ export interface PlayerAction {
   amount?: number;
 }
 
+export interface User {
+  id: string;
+  displayName: string;
+}
