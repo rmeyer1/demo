@@ -9,6 +9,9 @@ import {
   sitDown,
   standUp,
 } from "../services/table.service";
+import { sendTableInviteEmail } from "../services/email.service";
+import { checkRateLimit } from "../utils/rate-limiter";
+import { logger } from "../config/logger";
 
 const createTableSchema = z.object({
   name: z.string().min(1),
@@ -24,6 +27,10 @@ const joinByCodeSchema = z.object({
 const sitDownSchema = z.object({
   seatIndex: z.number().int().min(0),
   buyInAmount: z.number().int().positive(),
+});
+
+const inviteByEmailSchema = z.object({
+  emails: z.array(z.string().email()).min(1),
 });
 
 export async function registerTableRoutes(app: FastifyInstance) {
@@ -159,6 +166,79 @@ export async function registerTableRoutes(app: FastifyInstance) {
           inviteCode: table.inviteCode, // Added inviteCode
         }))
       );
+    }
+  );
+
+  // Invite by email
+  app.post(
+    "/:id/invite-by-email",
+    { preHandler: authenticate },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const req = request as AuthenticatedRequest;
+      const userId = req.userId;
+      const params = request.params as { id: string };
+      const body = inviteByEmailSchema.parse(request.body);
+      const tableId = params.id;
+
+      const table = await getTableById(tableId);
+
+      if (!table) {
+        return reply.status(404).send({
+          error: { code: "TABLE_NOT_FOUND", message: "Table not found." },
+        });
+      }
+
+      if (table.hostUserId !== userId) {
+        return reply.status(403).send({
+          error: { code: "FORBIDDEN", message: "Only the host can invite players." },
+        });
+      }
+
+      const rateLimitKey = `invite_email_rate_limit:${userId}:${tableId}`;
+      const isRateLimited = await checkRateLimit({
+        key: rateLimitKey,
+        limit: 5, // 5 invites per table per minute
+        window: 60,
+      });
+
+      if (!isRateLimited) {
+        return reply.status(429).send({
+          error: { code: "TOO_MANY_REQUESTS", message: "Too many invite requests." },
+        });
+      }
+
+      const results = await Promise.allSettled(
+        body.emails.map(async (email) => {
+          const hostDisplayName = req.userEmail ? req.userEmail.split("@")[0] : "Host";
+          const success = await sendTableInviteEmail(
+            email,
+            table.name,
+            table.inviteCode,
+            hostDisplayName
+          );
+          return { email, success };
+        })
+      );
+
+      const successfulEmails = results.filter(
+        (result) => result.status === "fulfilled" && result.value.success
+      );
+      const failedEmails = results.filter(
+        (result) => result.status === "fulfilled" && !result.value.success
+      );
+
+      if (successfulEmails.length === 0) {
+        return reply.status(500).send({
+          error: { code: "EMAIL_SEND_FAILED", message: "Failed to send any invitation emails." },
+          details: failedEmails.map((f: any) => f.value.email),
+        });
+      }
+
+      return reply.send({
+        message: "Invitation emails sent.",
+        successful: successfulEmails.map((s: any) => s.value.email),
+        failed: failedEmails.map((f: any) => f.value.email),
+      });
     }
   );
 
