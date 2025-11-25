@@ -1,6 +1,16 @@
 import { prisma } from "../db/prisma";
 import { redis } from "../db/redis";
 
+// Assuming an email service exists or will be created
+// For now, this is a placeholder
+const emailService = {
+  sendInviteEmail: async (to: string, tableName: string, inviteCode: string, hostDisplayName: string) => {
+    console.log(`Sending invite to ${to} for table ${tableName} with code ${inviteCode} from ${hostDisplayName}`);
+    // Simulate email sending success
+    return true;
+  },
+};
+
 export interface CreateTableInput {
   name: string;
   maxPlayers: number;
@@ -341,6 +351,69 @@ function formatTableWithSeats(table: any): TableWithSeats {
       isSittingOut: seat.isSittingOut,
     })),
   };
+}
+
+export async function sendInviteEmails(
+  tableId: string,
+  hostUserId: string,
+  emails: string[]
+): Promise<{ success: boolean; email: string; error?: string }[]> {
+  const table = await getTableById(tableId);
+
+  if (!table) {
+    throw new Error("Table not found");
+  }
+
+  if (table.hostUserId !== hostUserId) {
+    throw new Error("Unauthorized: Only the host can send invites.");
+  }
+
+  const hostProfile = await prisma.profile.findUnique({
+    where: { id: hostUserId },
+    select: { displayName: true },
+  });
+
+  const hostDisplayName = hostProfile?.displayName || "Table Host";
+
+  const results: { success: boolean; email: string; error?: string }[] = [];
+  const rateLimitKeyPrefix = `invite_rate_limit:${tableId}`;
+  const now = Date.now();
+  const thirtyMinutes = 30 * 60 * 1000; // 30 minutes in milliseconds
+
+  for (const email of emails) {
+    const rateLimitKey = `${rateLimitKeyPrefix}:${email}`;
+    const lastSent = await redis.get(rateLimitKey);
+
+    if (lastSent && (now - parseInt(lastSent, 10) < thirtyMinutes)) {
+      results.push({
+        success: false,
+        email,
+        error: `Rate limit exceeded for ${email}. Please wait before sending another invite to this address.`,
+      });
+      continue;
+    }
+
+    try {
+      const emailSent = await emailService.sendInviteEmail(
+        email,
+        table.name,
+        table.inviteCode,
+        hostDisplayName
+      );
+
+      if (emailSent) {
+        await redis.set(rateLimitKey, now.toString(), "PX", thirtyMinutes); // Set with expiry
+        results.push({ success: true, email });
+      } else {
+        results.push({ success: false, email, error: "Failed to send email" });
+      }
+    } catch (error: any) {
+      console.error(`Error sending invite email to ${email}:`, error);
+      results.push({ success: false, email, error: error.message || "Unknown error" });
+    }
+  }
+
+  return results;
 }
 
 // Redis helpers for table state
