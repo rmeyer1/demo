@@ -9,6 +9,10 @@ export const env = {
   SUPABASE_JWT_SECRET: process.env.SUPABASE_JWT_SECRET || "",
   PASSWORD_RESET_REDIRECT_URL: process.env.PASSWORD_RESET_REDIRECT_URL || "",
 
+  // Application URLs
+  APP_URL: process.env.APP_URL || "http://localhost:3000", // Frontend application URL
+  BACKEND_URL: process.env.BACKEND_URL || "http://localhost:4000", // Backend API URL
+
   // Database
   DATABASE_URL: process.env.DATABASE_URL || "",
 
@@ -25,6 +29,8 @@ const requiredEnvVars = [
   "SUPABASE_URL",
   "DATABASE_URL",
   "SUPABASE_JWT_SECRET",
+  "APP_URL", // Added APP_URL
+  "BACKEND_URL", // Added BACKEND_URL
 ] as const;
 
 for (const envVar of requiredEnvVars) {
