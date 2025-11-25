@@ -198,6 +198,7 @@ export async function getUserTables(userId: string, limit = 20, offset = 0) {
       bigBlind: true,
       hostUserId: true,
       createdAt: true,
+      inviteCode: true, // Added inviteCode
     },
   });
 
