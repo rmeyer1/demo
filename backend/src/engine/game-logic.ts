@@ -7,7 +7,7 @@ import {
   PlayerHandState,
   BettingRoundState,
 } from "./types";
-import {  createDeck, shuffleDeck, dealCard, cardToString } from "./cards";
+import { createDeck, shuffleDeck, dealCard, cardToString } from "./cards";
 import { evaluateHand, EvaluatedHand } from "./hand-evaluator";
 import { calculatePots, distributePots } from "./pot-manager";
 
@@ -76,6 +76,7 @@ export function startHandImpl(state: TableState): EngineResult {
       totalBet,
       status: seat.stack === 0 ? "ALL_IN" : "ACTIVE",
       isAllIn: seat.stack === 0,
+      hasActed: false,
     });
   }
 
@@ -144,7 +145,9 @@ export function startHandImpl(state: TableState): EngineResult {
     sidePots: [],
     toActSeatIndex: firstToAct,
     minBet: state.bigBlind,
-    callAmount: currentBet - (playerStates.find((p) => p.seatIndex === firstToAct)?.currentBet || 0),
+    callAmount:
+      currentBet -
+      (playerStates.find((p) => p.seatIndex === firstToAct)?.currentBet || 0),
     playerStates,
     deck,
     burnedCards: [],
@@ -205,6 +208,7 @@ export function applyPlayerAction(
 
   const seat = state.seats[seatIndex];
   const events: EngineEvent[] = [];
+  playerState.hasActed = true;
 
   // Validate and apply action
   switch (action.action) {
@@ -327,7 +331,9 @@ export function applyPlayerAction(
 
   // Update call amount for next player
   if (nextPlayer !== undefined) {
-    const nextPlayerState = hand.playerStates.find((p) => p.seatIndex === nextPlayer);
+    const nextPlayerState = hand.playerStates.find(
+      (p) => p.seatIndex === nextPlayer
+    );
     if (nextPlayerState) {
       hand.callAmount = hand.betting.currentBet - nextPlayerState.currentBet;
     }
@@ -476,22 +482,36 @@ export function advanceIfReady(state: TableState): EngineResult | null {
   };
 }
 
-function performShowdown(state: TableState, events: EngineEvent[]): EngineResult {
+function performShowdown(
+  state: TableState,
+  events: EngineEvent[]
+): EngineResult {
   const hand = state.currentHand!;
   const activePlayers = hand.playerStates.filter((p) => p.status !== "FOLDED");
 
   // Evaluate all hands
-  const evaluatedHands = new Map<number, { hand: EvaluatedHand; seatIndex: number }>();
+  const evaluatedHands = new Map<
+    number,
+    { hand: EvaluatedHand; seatIndex: number }
+  >();
   for (const player of activePlayers) {
     if (player.holeCards) {
       const allCards = [...player.holeCards, ...hand.communityCards];
       const evaluated = evaluateHand(allCards);
-      evaluatedHands.set(player.seatIndex, { hand: evaluated, seatIndex: player.seatIndex });
+      evaluatedHands.set(player.seatIndex, {
+        hand: evaluated,
+        seatIndex: player.seatIndex,
+      });
     }
   }
 
   // Distribute pots
-  const winnings = distributePots(hand.mainPot, hand.sidePots, hand.playerStates, evaluatedHands);
+  const winnings = distributePots(
+    hand.mainPot,
+    hand.sidePots,
+    hand.playerStates,
+    evaluatedHands
+  );
 
   // Update stacks
   const finalStacks: { seatIndex: number; stack: number }[] = [];
@@ -501,15 +521,17 @@ function performShowdown(state: TableState, events: EngineEvent[]): EngineResult
   }
 
   // Build winners list
-  const winners = Array.from(winnings.entries()).map(([seatIndex, wonAmount]) => {
-    const evaluated = evaluatedHands.get(seatIndex);
-    return {
-      seatIndex,
-      handRank: evaluated?.hand.category || "UNKNOWN",
-      handDescription: evaluated?.hand.description || "Unknown",
-      wonAmount,
-    };
-  });
+  const winners = Array.from(winnings.entries()).map(
+    ([seatIndex, wonAmount]) => {
+      const evaluated = evaluatedHands.get(seatIndex);
+      return {
+        seatIndex,
+        handRank: evaluated?.hand.category || "UNKNOWN",
+        handDescription: evaluated?.hand.description || "Unknown",
+        wonAmount,
+      };
+    }
+  );
 
   events.push({
     type: "HAND_RESULT",
@@ -545,6 +567,7 @@ function resetBettingRound(hand: HandState, state: TableState): void {
     if (playerState.status === "ACTIVE") {
       playerState.currentBet = 0;
       hand.betting.contributions[playerState.seatIndex] = playerState.totalBet;
+      playerState.hasActed = false;
     }
   }
 
@@ -561,36 +584,13 @@ function isBettingRoundComplete(state: TableState): boolean {
     (p) => p.status === "ACTIVE" && !p.isAllIn
   );
 
-  if (activePlayers.length <= 1) {
-    return true;
-  }
+  if (activePlayers.length === 0) return true;
 
-  // Check if all active players have matched the current bet
   const currentBet = hand.betting.currentBet;
-  for (const player of activePlayers) {
-    if (player.currentBet < currentBet) {
-      return false;
-    }
-  }
+  const allMatchedBet = activePlayers.every((p) => p.currentBet === currentBet);
+  const allHaveActed = activePlayers.every((p) => p.hasActed);
 
-  // Check if action has returned to last aggressor (or all have checked)
-  if (hand.betting.lastAggressorSeatIndex !== undefined) {
-    const lastAggressor = hand.betting.lastAggressorSeatIndex;
-    const nextAfterAggressor = getNextActiveSeat(state, lastAggressor);
-    if (hand.toActSeatIndex === nextAfterAggressor && currentBet === 0) {
-      // Everyone has checked
-      return true;
-    }
-    if (hand.toActSeatIndex === lastAggressor) {
-      // Action has returned to last aggressor
-      return true;
-    }
-  } else if (currentBet === 0 && hand.toActSeatIndex === undefined) {
-    // Everyone checked
-    return true;
-  }
-
-  return false;
+  return allMatchedBet && allHaveActed;
 }
 
 function getNextActiveSeat(state: TableState, startSeatIndex: number): number {
@@ -602,7 +602,9 @@ function getNextActiveSeat(state: TableState, startSeatIndex: number): number {
     throw new Error("NO_ACTIVE_SEATS");
   }
 
-  const startIndex = activeSeats.findIndex(({ index }) => index === startSeatIndex);
+  const startIndex = activeSeats.findIndex(
+    ({ index }) => index === startSeatIndex
+  );
   if (startIndex === -1) {
     return activeSeats[0].index;
   }
@@ -611,7 +613,10 @@ function getNextActiveSeat(state: TableState, startSeatIndex: number): number {
   return activeSeats[nextIndex].index;
 }
 
-function getNextToAct(state: TableState, currentSeatIndex: number): number | undefined {
+function getNextToAct(
+  state: TableState,
+  currentSeatIndex: number
+): number | undefined {
   const hand = state.currentHand!;
   const activePlayers = hand.playerStates.filter(
     (p) => p.status === "ACTIVE" && !p.isAllIn
@@ -621,7 +626,9 @@ function getNextToAct(state: TableState, currentSeatIndex: number): number | und
     return undefined;
   }
 
-  const currentIndex = activePlayers.findIndex((p) => p.seatIndex === currentSeatIndex);
+  const currentIndex = activePlayers.findIndex(
+    (p) => p.seatIndex === currentSeatIndex
+  );
   if (currentIndex === -1) {
     return activePlayers[0]?.seatIndex;
   }
@@ -643,7 +650,9 @@ function getNextDealerSeat(state: TableState): number {
     return activeSeats[0].index;
   }
 
-  const startIndex = activeSeats.findIndex(({ index }) => index === state.lastDealerSeatIndex);
+  const startIndex = activeSeats.findIndex(
+    ({ index }) => index === state.lastDealerSeatIndex
+  );
   if (startIndex === -1) {
     return activeSeats[0].index;
   }
