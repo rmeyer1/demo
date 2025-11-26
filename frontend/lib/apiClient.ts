@@ -22,18 +22,16 @@ export class ApiError extends Error {
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = await getAuthToken();
 
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...(options.headers || {}),
-  };
+  const requestHeaders = new Headers(options.headers);
+  requestHeaders.set("Content-Type", "application/json");
 
   if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+    requestHeaders.set("Authorization", `Bearer ${token}`);
   }
 
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
-    headers,
+    headers: requestHeaders, // Use the Headers object here
     credentials: "include",
   });
 

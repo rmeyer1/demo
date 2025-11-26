@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
@@ -82,47 +82,49 @@ export default function ResetConfirmPage() {
   };
 
   return (
-    <div className="max-w-md mx-auto mt-12">
-      <Card>
-        <h1 className="text-3xl font-bold text-slate-50 mb-6 text-center">Set a new password</h1>
-        {success ? (
-          <div className="space-y-3 text-slate-200 text-center">
-            <p>Password updated. Redirecting to login...</p>
-            <Link href="/auth/login" className="text-emerald-400 hover:underline">
-              Go to login now
-            </Link>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              type="password"
-              label="New password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={loading || !sessionReady}
-              minLength={6}
-              required
-            />
-            <Input
-              type="password"
-              label="Confirm password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              disabled={loading || !sessionReady}
-              minLength={6}
-              required
-            />
-            {error && (
-              <div className="p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-300 text-sm">
-                {error}
-              </div>
-            )}
-            <Button type="submit" className="w-full" disabled={loading || !sessionReady}>
-              {loading ? "Updating..." : "Update password"}
-            </Button>
-          </form>
-        )}
-      </Card>
-    </div>
+    <Suspense fallback={<div>Loading...</div>}>
+      <div className="max-w-md mx-auto mt-12">
+        <Card>
+          <h1 className="text-3xl font-bold text-slate-50 mb-6 text-center">Set a new password</h1>
+          {success ? (
+            <div className="space-y-3 text-slate-200 text-center">
+              <p>Password updated. Redirecting to login...</p>
+              <Link href="/auth/login" className="text-emerald-400 hover:underline">
+                Go to login now
+              </Link>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <Input
+                type="password"
+                label="New password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading || !sessionReady}
+                minLength={6}
+                required
+              />
+              <Input
+                type="password"
+                label="Confirm password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                disabled={loading || !sessionReady}
+                minLength={6}
+                required
+              />
+              {error && (
+                <div className="p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-300 text-sm">
+                  {error}
+                </div>
+              )}
+              <Button type="submit" className="w-full" disabled={loading || !sessionReady}>
+                {loading ? "Updating..." : "Update password"}
+              </Button>
+            </form>
+          )}
+        </Card>
+      </div>
+    </Suspense>
   );
 }

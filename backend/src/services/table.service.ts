@@ -1,15 +1,7 @@
 import { prisma } from "../db/prisma";
 import { redis } from "../db/redis";
 
-// Assuming an email service exists or will be created
-// For now, this is a placeholder
-const emailService = {
-  sendInviteEmail: async (to: string, tableName: string, inviteCode: string, hostDisplayName: string) => {
-    console.log(`Sending invite to ${to} for table ${tableName} with code ${inviteCode} from ${hostDisplayName}`);
-    // Simulate email sending success
-    return true;
-  },
-};
+import { emailService } from "./email.service";
 
 export interface CreateTableInput {
   name: string;
