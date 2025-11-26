@@ -8,6 +8,7 @@ import {
   getUserTables,
   sitDown,
   standUp,
+  sendInviteEmails, // Added this import
 } from "../services/table.service";
 
 const createTableSchema = z.object({
@@ -24,6 +25,11 @@ const joinByCodeSchema = z.object({
 const sitDownSchema = z.object({
   seatIndex: z.number().int().min(0),
   buyInAmount: z.number().int().positive(),
+});
+
+// New schema for sending invite emails
+const sendInviteEmailsSchema = z.object({
+  emails: z.array(z.string().email()).min(1),
 });
 
 export async function registerTableRoutes(app: FastifyInstance) {
@@ -115,7 +121,8 @@ export async function registerTableRoutes(app: FastifyInstance) {
         id: table.id,
         hostUserId: table.hostUserId,
         name: table.name,
-        inviteCode: table.inviteCode,
+        // Only expose inviteCode to the host
+        ...(isHost && { inviteCode: table.inviteCode }),
         maxPlayers: table.maxPlayers,
         smallBlind: table.smallBlind,
         bigBlind: table.bigBlind,
@@ -184,6 +191,50 @@ export async function registerTableRoutes(app: FastifyInstance) {
         maxPlayers: table.maxPlayers,
         status: table.status,
       });
+    }
+  );
+
+  // Send invite emails
+  app.post(
+    "/:id/send-invite",
+    { preHandler: authenticate },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const req = request as AuthenticatedRequest;
+      const userId = req.userId;
+      const params = request.params as { id: string };
+      const { emails } = sendInviteEmailsSchema.parse(request.body);
+
+      try {
+        const results = await sendInviteEmails(params.id, userId, emails);
+        return reply.status(200).send({
+          message: "Invite emails processed.",
+          results,
+        });
+      } catch (error: any) {
+        if (error.message.includes("Table not found")) {
+          return reply.status(404).send({
+            error: {
+              code: "TABLE_NOT_FOUND",
+              message: "Table does not exist.",
+            },
+          });
+        }
+        if (error.message.includes("Unauthorized")) {
+          return reply.status(403).send({
+            error: {
+              code: "UNAUTHORIZED",
+              message: "You are not authorized to send invites for this table.",
+            },
+          });
+        }
+        // Catch-all for other errors, including rate limiting from service
+        return reply.status(500).send({
+          error: {
+            code: "INTERNAL_ERROR",
+            message: error.message || "Failed to send invite emails.",
+          },
+        });
+      }
     }
   );
 

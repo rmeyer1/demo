@@ -17,6 +17,7 @@ import { HandResultOverlay } from "@/components/table/HandResultOverlay";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { ShareInvite } from "@/components/table/ShareInvite"; // Import ShareInvite component
 
 export default function TablePage() {
   const params = useParams();
@@ -294,6 +295,17 @@ export default function TablePage() {
   return (
     <div className="max-w-7xl mx-auto">
       <TableHud tableName={table.name} tableMeta={table} tableState={tableState} />
+
+      {/* Share Invite Component - visible only to host */}
+      {isHost && table.inviteCode && (
+        <div className="mt-6">
+          <ShareInvite
+            tableId={table.id}
+            inviteCode={table.inviteCode}
+            tableName={table.name}
+          />
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-4 gap-6">
         <div className="lg:col-span-3">

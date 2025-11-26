@@ -31,7 +31,8 @@ export function useChat(tableId: string, inviteCode?: string | null) {
   useEffect(() => {
     if (!socket || !connected) return;
 
-    const unsubscribe = on("CHAT_MESSAGE", (payload: { message: ChatMessage }) => {
+    const unsubscribe = on("CHAT_MESSAGE", (...args: unknown[]) => {
+      const payload = args[0] as { message: ChatMessage };
       setMessages((prev) => [...prev, payload.message]);
     });
 
