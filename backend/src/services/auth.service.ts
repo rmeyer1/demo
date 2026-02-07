@@ -11,6 +11,75 @@ export interface UserProfile {
   createdAt: Date;
 }
 
+export interface RegisterResult {
+  user: UserProfile & { email: string };
+  token: string;
+}
+
+export async function registerUser(
+  email: string,
+  password: string,
+  displayName: string
+): Promise<RegisterResult> {
+  // Create user in Supabase Auth
+  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true, // Auto-confirm email for MVP
+  });
+
+  if (authError) {
+    if (authError.message.includes("already been registered")) {
+      throw new Error("EMAIL_EXISTS");
+    }
+    if (authError.message.includes("password")) {
+      throw new Error("WEAK_PASSWORD");
+    }
+    throw new Error("REGISTRATION_FAILED");
+  }
+
+  if (!authData.user) {
+    throw new Error("REGISTRATION_FAILED");
+  }
+
+  const userId = authData.user.id;
+
+  // Create profile in database
+  const profile = await prisma.profile.create({
+    data: {
+      id: userId,
+      displayName: displayName.trim() || `player-${userId.slice(0, 8)}`,
+    },
+  });
+
+  // Generate JWT token for the user
+  const { data: signInData, error: signInError } = await supabaseAdmin.auth.admin.generateLink({
+    type: "magiclink",
+    email,
+  });
+
+  // Fallback: create a session directly using signInWithPassword
+  const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (sessionError || !sessionData.session) {
+    // Even if session creation fails, user is created - they can login separately
+    throw new Error("SESSION_CREATION_FAILED");
+  }
+
+  return {
+    user: {
+      id: profile.id,
+      email: authData.user.email!,
+      displayName: profile.displayName,
+      createdAt: profile.createdAt,
+    },
+    token: sessionData.session.access_token,
+  };
+}
+
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   const profile = await prisma.profile.findUnique({
     where: { id: userId },

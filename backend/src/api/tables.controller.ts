@@ -6,6 +6,7 @@ import {
   getTableById,
   getTableByInviteCode,
   getUserTables,
+  getPublicOpenTables,
   sitDown,
   standUp,
 } from "../services/table.service";
@@ -27,6 +28,36 @@ const sitDownSchema = z.object({
 });
 
 export async function registerTableRoutes(app: FastifyInstance) {
+  // Public: List all open tables
+  app.get("/", async (request: FastifyRequest, reply: FastifyReply) => {
+    const query = request.query as { limit?: string; offset?: string };
+    const limit = query.limit ? parseInt(query.limit, 10) : 50;
+    const offset = query.offset ? parseInt(query.offset, 10) : 0;
+
+    try {
+      const tables = await getPublicOpenTables(limit, offset);
+      return reply.send(
+        tables.map((table) => ({
+          id: table.id,
+          name: table.name,
+          host: table.host,
+          maxPlayers: table.maxPlayers,
+          currentPlayerCount: table.currentPlayerCount,
+          inviteCode: table.inviteCode,
+          blinds: table.blinds,
+          createdAt: table.createdAt.toISOString(),
+        }))
+      );
+    } catch (error) {
+      return reply.status(500).send({
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch tables.",
+        },
+      });
+    }
+  });
+
   // Create table
   app.post(
     "/",
