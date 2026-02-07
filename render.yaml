@@ -20,11 +20,11 @@ services:
           envVarKey: PORT
       # Production Database (Supabase recommended)
       - key: DATABASE_URL
+        # Set in Render dashboard
         sync: false
-        sync: false  # Set in Render dashboard
       - key: REDIS_URL
+        # Set in Render dashboard or use Render Redis
         sync: false
-        sync: false  # Set in Render dashboard or use Render Redis
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
