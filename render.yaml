@@ -42,5 +42,6 @@ services:
       - key: JWT_AUDIENCE
         value: authenticated
     plan: starter  # Hobby plan ($7/mo minimum for always-on)
-  # Redis Cache (Render Managed Redis)
-    ipAllowList: []  # Allow all (required for Render services)
+    # Redis Cache (Render Managed Redis)
+    # Allow all (required for Render services)
+    ipAllowList: []  
