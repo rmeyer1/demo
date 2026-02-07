@@ -5,9 +5,84 @@ import {
   getUserProfile,
   requestPasswordReset,
   confirmPasswordReset,
+  registerUser,
 } from "../services/auth.service";
 
+const registerSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+  displayName: z.string().min(1).max(50),
+});
+
 export async function registerAuthRoutes(app: FastifyInstance) {
+  // Register new user
+  app.post("/register", async (request: FastifyRequest, reply: FastifyReply) => {
+    let parsed: { email: string; password: string; displayName: string };
+    try {
+      parsed = registerSchema.parse(request.body);
+    } catch (err) {
+      return reply.status(400).send({
+        error: {
+          code: "INVALID_PAYLOAD",
+          message: "Valid email, password (6+ chars), and display name (1-50 chars) are required.",
+        },
+      });
+    }
+
+    try {
+      const result = await registerUser(parsed.email, parsed.password, parsed.displayName);
+      return reply.status(201).send({
+        user: {
+          id: result.user.id,
+          email: result.user.email,
+          displayName: result.user.displayName,
+          createdAt: result.user.createdAt.toISOString(),
+        },
+        token: result.token,
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "UNKNOWN_ERROR";
+
+      if (errorMessage === "EMAIL_EXISTS") {
+        return reply.status(409).send({
+          error: {
+            code: "EMAIL_EXISTS",
+            message: "An account with this email already exists.",
+          },
+        });
+      }
+
+      if (errorMessage === "WEAK_PASSWORD") {
+        return reply.status(400).send({
+          error: {
+            code: "WEAK_PASSWORD",
+            message: "Password is too weak. Please use a stronger password.",
+          },
+        });
+      }
+
+      if (errorMessage === "SESSION_CREATION_FAILED") {
+        return reply.status(201).send({
+          user: {
+            id: "unknown",
+            email: parsed.email,
+            displayName: parsed.displayName,
+            createdAt: new Date().toISOString(),
+          },
+          token: null,
+          message: "User created but session could not be established. Please log in manually.",
+        });
+      }
+
+      return reply.status(500).send({
+        error: {
+          code: "REGISTRATION_FAILED",
+          message: "Failed to create account. Please try again later.",
+        },
+      });
+    }
+  });
+
   app.get("/me", { preHandler: authenticate }, async (request: FastifyRequest, reply: FastifyReply) => {
     const req = request as AuthenticatedRequest;
     const userId = req.userId;

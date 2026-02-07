@@ -170,6 +170,50 @@ export async function getTableByInviteCode(inviteCode: string): Promise<TableWit
   return formatTableWithSeats(table);
 }
 
+export async function getPublicOpenTables(limit = 50, offset = 0) {
+  const tables = await prisma.table.findMany({
+    where: {
+      status: "OPEN",
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: limit,
+    skip: offset,
+    include: {
+      host: {
+        select: {
+          displayName: true,
+        },
+      },
+      seats: {
+        where: {
+          userId: {
+            not: null,
+          },
+        },
+        select: {
+          userId: true,
+        },
+      },
+    },
+  });
+
+  return tables.map((table) => ({
+    id: table.id,
+    name: table.name,
+    host: table.host.displayName,
+    maxPlayers: table.maxPlayers,
+    currentPlayerCount: table.seats.length,
+    inviteCode: table.inviteCode,
+    blinds: {
+      small: table.smallBlind,
+      big: table.bigBlind,
+    },
+    createdAt: table.createdAt,
+  }));
+}
+
 export async function getUserTables(userId: string, limit = 20, offset = 0) {
   const tables = await prisma.table.findMany({
     where: {
