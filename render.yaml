@@ -41,7 +41,7 @@ services:
         value: wss://poker-backend.onrender.com
       - key: JWT_AUDIENCE
         value: authenticated
-    healthCheckPath: /health
+    plan: starter  # Hobby plan ($7/mo minimum for always-on)
     plan: starter
 
   # Redis Cache (Render Managed Redis)
