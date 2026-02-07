@@ -46,7 +46,7 @@ services:
 
   # Redis Cache (Render Managed Redis)
     ipAllowList: []  # Allow all (required for Render services)
-    name: poker-redis
+    plan: starter  # Free tier available
     ipAllowList: []
     plan: starter
     maxmemoryPolicy: allkeys-lru
