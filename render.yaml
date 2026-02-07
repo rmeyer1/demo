@@ -21,7 +21,7 @@ services:
       # Production Database (Supabase recommended)
       - key: DATABASE_URL
         sync: false
-      # Redis for session/cache
+        sync: false  # Set in Render dashboard
       - key: REDIS_URL
         sync: false
       # Supabase Config
