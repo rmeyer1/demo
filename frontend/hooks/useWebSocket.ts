@@ -84,7 +84,8 @@ export function useWebSocket(tableId?: string, inviteCode?: string | null) {
   );
 
   const on = useCallback(
-    (event: string, handler: (...args: unknown[]) => void) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (event: string, handler: (...args: any[]) => void) => {
       if (socket) {
         socket.on(event, handler);
         return () => {

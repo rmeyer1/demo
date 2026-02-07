@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
@@ -8,7 +8,19 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
-export default function ResetConfirmPage() {
+// Loading state for Suspense fallback
+function LoadingState() {
+  return (
+    <div className="max-w-md mx-auto mt-12">
+      <Card>
+        <div className="text-center text-slate-300">Loading...</div>
+      </Card>
+    </div>
+  );
+}
+
+// Inner component using useSearchParams
+function ResetConfirmContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const code = searchParams.get("code");
@@ -124,5 +136,14 @@ export default function ResetConfirmPage() {
         )}
       </Card>
     </div>
+  );
+}
+
+// Main page component with Suspense wrapper
+export default function ResetConfirmPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <ResetConfirmContent />
+    </Suspense>
   );
 }
