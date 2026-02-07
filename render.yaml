@@ -46,7 +46,7 @@ services:
     env: node
     plan: starter  # Hobby plan ($7/mo minimum for always-on)
     
-  # Frontend Static Site (Next.js)
+    
   - type: static
     name: poker-frontend
     runtime: static
