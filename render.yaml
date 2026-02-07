@@ -18,12 +18,9 @@ services:
           type: web
           name: poker-backend
           envVarKey: PORT
-      # Production Database (Supabase recommended)
       - key: DATABASE_URL
-        # Set in Render dashboard
         sync: false
       - key: REDIS_URL
-        # Set in Render dashboard or use Render Redis
         sync: false
       - key: SUPABASE_URL
         sync: false
@@ -31,17 +28,18 @@ services:
         sync: false
       - key: SUPABASE_JWT_SECRET
         sync: false
-      # Frontend URLs for CORS
       - key: FRONTEND_URL
         value: https://poker-frontend.onrender.com
-      # API Config
       - key: API_BASE_URL
         value: https://poker-backend.onrender.com
       - key: WS_URL
         value: wss://poker-backend.onrender.com
       - key: JWT_AUDIENCE
         value: authenticated
-    plan: starter  # Hobby plan ($7/mo minimum for always-on)
-    # Redis Cache (Render Managed Redis)
-    # Allow all (required for Render services)
-    ipAllowList: []  
+    healthCheckPath: /health
+    plan: starter
+
+  # Redis Cache
+  - type: redis
+    name: poker-redis
+    ipAllowList: []
