@@ -44,4 +44,3 @@ services:
     plan: starter  # Hobby plan ($7/mo minimum for always-on)
   # Redis Cache (Render Managed Redis)
     ipAllowList: []  # Allow all (required for Render services)
-    maxmemoryPolicy: allkeys-lru
