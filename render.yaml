@@ -1,23 +1,16 @@
-# Render Blueprint for Texas Hold'em Poker App
-# Deploy to Render: https://render.com/docs/blueprint-spec
-
 services:
-  # Backend API + WebSocket Server
   - type: web
     name: poker-backend
     runtime: node
     repo: https://github.com/rmeyer1/demo
     branch: main
+    plan: starter
     buildCommand: cd backend && npm install && npm run build && npx prisma migrate deploy
     startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        fromService:
-          type: web
-          name: poker-backend
-          envVarKey: PORT
+      # Set these in the Render Dashboard after the first deploy attempt
       - key: DATABASE_URL
         sync: false
       - key: REDIS_URL
@@ -36,10 +29,4 @@ services:
         value: wss://poker-backend.onrender.com
       - key: JWT_AUDIENCE
         value: authenticated
-    healthCheckPath: /health
-    plan: starter
-
-  # Redis Cache
-  - type: redis
-    name: poker-redis
     ipAllowList: []
