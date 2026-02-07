@@ -20,11 +20,11 @@ services:
           envVarKey: PORT
       # Production Database (Supabase recommended)
       - key: DATABASE_URL
+        sync: false
         sync: false  # Set in Render dashboard
-      # Redis for session/cache
       - key: REDIS_URL
+        sync: false
         sync: false  # Set in Render dashboard or use Render Redis
-      # Supabase Config
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
@@ -41,36 +41,12 @@ services:
         value: wss://poker-backend.onrender.com
       - key: JWT_AUDIENCE
         value: authenticated
-    healthCheckPath: /health
-    # WebSocket support
-    env: node
     plan: starter  # Hobby plan ($7/mo minimum for always-on)
-    
-    
-  - type: static
-    name: poker-frontend
-    runtime: static
-    repo: https://github.com/rmeyer1/demo
-    branch: main
-    buildCommand: cd frontend && npm install && npm run build
-    publish: frontend/dist
-    envVars:
-      - key: NEXT_PUBLIC_SUPABASE_URL
-        sync: false
-      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
-    publish: frontend/.next
-      - key: NEXT_PUBLIC_API_BASE_URL
-        value: https://poker-backend.onrender.com
-      - key: NODE_ENV
-        value: production
-    headers:
-      - path: /*
-        name: Cache-Control
-        value: public, max-age=0, must-revalidate
-    
+    plan: starter
+
   # Redis Cache (Render Managed Redis)
-  - type: redis
-    name: poker-redis
     ipAllowList: []  # Allow all (required for Render services)
     plan: starter  # Free tier available
+    ipAllowList: []
+    plan: starter
     maxmemoryPolicy: allkeys-lru
