@@ -58,7 +58,7 @@ services:
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
-        sync: false
+    publish: frontend/.next
       - key: NEXT_PUBLIC_API_BASE_URL
         value: https://poker-backend.onrender.com
       - key: NODE_ENV
