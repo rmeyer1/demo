@@ -23,7 +23,10 @@ services:
         sync: false  # Set in Render dashboard
       # Redis for session/cache
       - key: REDIS_URL
-        sync: false  # Set in Render dashboard or use Render Redis
+        fromService:
+          type: redis
+          name: poker-redis
+          property: connectionString
       # Supabase Config
       - key: SUPABASE_URL
         sync: false
@@ -31,10 +34,10 @@ services:
         sync: false
       - key: SUPABASE_JWT_SECRET
         sync: false
-      # Frontend URLs for CORS
+      # Frontend URL for CORS (set after Vercel deployment)
       - key: FRONTEND_URL
-        value: https://poker-frontend.onrender.com
-      # API Config
+        sync: false  # TODO: Set this to your Vercel URL after deployment (e.g., https://your-app.vercel.app)
+      # API Config - These reference this service itself
       - key: API_BASE_URL
         value: https://poker-backend.onrender.com
       - key: WS_URL
@@ -42,31 +45,7 @@ services:
       - key: JWT_AUDIENCE
         value: authenticated
     healthCheckPath: /health
-    # WebSocket support
-    env: node
     plan: starter  # Hobby plan ($7/mo minimum for always-on)
-    
-  # Frontend Static Site (Next.js)
-  - type: static
-    name: poker-frontend
-    runtime: static
-    repo: https://github.com/rmeyer1/demo
-    branch: main
-    buildCommand: cd frontend && npm install && npm run build
-    publish: frontend/dist
-    envVars:
-      - key: NEXT_PUBLIC_SUPABASE_URL
-        sync: false
-      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
-        sync: false
-      - key: NEXT_PUBLIC_API_BASE_URL
-        value: https://poker-backend.onrender.com
-      - key: NODE_ENV
-        value: production
-    headers:
-      - path: /*
-        name: Cache-Control
-        value: public, max-age=0, must-revalidate
     
   # Redis Cache (Render Managed Redis)
   - type: redis
