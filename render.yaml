@@ -45,7 +45,7 @@ services:
     plan: starter
 
   # Redis Cache (Render Managed Redis)
-  - type: redis
+    ipAllowList: []  # Allow all (required for Render services)
     name: poker-redis
     ipAllowList: []
     plan: starter
